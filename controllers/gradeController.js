@@ -1,0 +1,210 @@
+const User = require("../models/User");
+const Record = require("../models/Record");
+const TaskSubmission = require("../models/TaskSubmission");
+const Grade = require("../models/Grade");
+const Notice = require("../models/Notice");
+const { ROLES } = require("../config/roles");
+
+const monthRange = (period) => {
+  // period = "YYYY-MM"
+  const [y, m] = period.split("-").map(Number);
+  const start = new Date(y, m - 1, 1);
+  const end = new Date(y, m, 0, 23, 59, 59);
+  return { start, end };
+};
+
+// Computes the five sub-scores (0-100 each) for one user in one month, purely
+// from what they actually submitted - no manual input required.
+const computeScoresForUser = async (user, period) => {
+  const { start, end } = monthRange(period);
+  const daysInPeriod = end.getDate();
+  const scopeCode = { awc: { awcCode: user.awcCode }, sector: { sectorCode: user.sectorCode } }[user.role];
+
+  let punctualityScore = 100;
+  let submissionQualityScore = 100;
+  let beneficiaryRatioScore = 100;
+
+  if (user.role === ROLES.AWC) {
+    const records = await Record.find({ awcCode: user.awcCode, date: { $gte: start, $lte: end } });
+
+    // Punctuality: how many of the days in the month has she actually submitted a record for
+    const daysSubmitted = new Set(records.map((r) => new Date(r.date).toDateString())).size;
+    punctualityScore = Math.min(100, Math.round((daysSubmitted / daysInPeriod) * 100));
+
+    // Submission quality: of the ones reviewed so far, how many were approved
+    const reviewed = records.filter((r) => r.status !== "pending");
+    submissionQualityScore =
+      reviewed.length === 0 ? 100 : Math.round((reviewed.filter((r) => r.status === "approved").length / reviewed.length) * 100);
+
+    // Beneficiary ratio: actual children present vs registered, averaged
+    const withRegistered = records.filter((r) => r.registeredChildrenCount > 0);
+    beneficiaryRatioScore =
+      withRegistered.length === 0
+        ? 100
+        : Math.round(
+            (withRegistered.reduce((sum, r) => sum + Math.min(1, r.morningMealChildrenCount / r.registeredChildrenCount), 0) /
+              withRegistered.length) *
+              100
+          );
+  }
+  // Sector (Mukhya Sevika) grading could follow the same pattern against MukhyaSevikaEntry
+  // if/when that becomes a graded role - left at defaults (100) for now.
+
+  // Task completion: on-time submissions vs total submitted, for tasks in this period
+  const taskSubs = await TaskSubmission.find({
+    submittedBy: user._id,
+    createdAt: { $gte: start, $lte: end },
+  });
+  const taskCompletionScore =
+    taskSubs.length === 0 ? 100 : Math.round((taskSubs.filter((t) => !t.submittedLate).length / taskSubs.length) * 100);
+
+  return { punctualityScore, submissionQualityScore, beneficiaryRatioScore, taskCompletionScore };
+};
+
+const WEIGHTS = {
+  punctualityScore: 0.25,
+  submissionQualityScore: 0.25,
+  beneficiaryRatioScore: 0.25,
+  taskCompletionScore: 0.15,
+  supervisorRemarksScore: 0.1,
+};
+
+const bucketGrade = (total) => {
+  if (total >= 85) return "A";
+  if (total >= 70) return "B";
+  if (total >= 50) return "C";
+  return "D";
+};
+
+// @desc   Generate/refresh auto-grades for every AWC worker (and sector, when
+//         applicable) in the caller's scope, for one month.
+// @route  POST /api/grades/generate
+// @access Private (district, block, sector)
+const generateGrades = async (req, res) => {
+  try {
+    if (req.user.role === ROLES.AWC) {
+      return res.status(403).json({ success: false, message: "AWC role cannot generate grades" });
+    }
+
+    const { period } = req.body; // "YYYY-MM"
+    if (!period || !/^\d{4}-\d{2}$/.test(period)) {
+      return res.status(400).json({ success: false, message: "period is required, format YYYY-MM" });
+    }
+
+    const users = await User.find({ ...req.scopeFilter, role: ROLES.AWC });
+
+    const results = [];
+    for (const user of users) {
+      const scores = await computeScoresForUser(user, period);
+      const supervisorRemarksScore = 100; // neutral default until an admin manually adjusts it
+
+      const totalScore = Math.round(
+        scores.punctualityScore * WEIGHTS.punctualityScore +
+          scores.submissionQualityScore * WEIGHTS.submissionQualityScore +
+          scores.beneficiaryRatioScore * WEIGHTS.beneficiaryRatioScore +
+          scores.taskCompletionScore * WEIGHTS.taskCompletionScore +
+          supervisorRemarksScore * WEIGHTS.supervisorRemarksScore
+      );
+
+      const grade = await Grade.findOneAndUpdate(
+        { user: user._id, period },
+        {
+          user: user._id,
+          role: user.role,
+          districtCode: user.districtCode,
+          blockCode: user.blockCode,
+          sectorCode: user.sectorCode,
+          awcCode: user.awcCode,
+          period,
+          ...scores,
+          supervisorRemarksScore,
+          totalScore,
+          grade: bucketGrade(totalScore),
+          isAutoGenerated: true,
+          generatedAt: new Date(),
+        },
+        { upsert: true, new: true }
+      );
+
+      results.push(grade);
+
+      // Auto-generated notice for underperforming grades (C or D)
+      if (grade.grade === "C" || grade.grade === "D") {
+        await Notice.findOneAndUpdate(
+          { user: user._id, period },
+          {
+            user: user._id,
+            grade: grade._id,
+            period,
+            districtCode: user.districtCode,
+            blockCode: user.blockCode,
+            sectorCode: user.sectorCode,
+            awcCode: user.awcCode,
+            message: `Your performance grade for ${period} is ${grade.grade} (score: ${grade.totalScore}/100). Please review your submission punctuality, quality, and beneficiary coverage with your supervisor.`,
+          },
+          { upsert: true, new: true }
+        );
+      }
+    }
+
+    res.status(200).json({ success: true, count: results.length, grades: results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc   List grades - auto-scoped. Filter by ?period=YYYY-MM
+// @route  GET /api/grades
+// @access Private (any role - awc sees only its own)
+const getGrades = async (req, res) => {
+  try {
+    const filter = { ...req.scopeFilter };
+    if (req.query.period) filter.period = req.query.period;
+    if (req.user.role === ROLES.AWC) filter.user = req.user._id; // workers only see their own grade
+
+    const grades = await Grade.find(filter).populate("user", "name email role awcCode").sort({ totalScore: -1 });
+    res.status(200).json({ success: true, count: grades.length, grades });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// @desc   Manually override a grade (e.g. adjust supervisor remarks score,
+//         add remarks). Recomputes the weighted total.
+// @route  PATCH /api/grades/:id
+// @access Private (district, block, sector)
+const updateGrade = async (req, res) => {
+  try {
+    if (req.user.role === ROLES.AWC) {
+      return res.status(403).json({ success: false, message: "AWC role cannot edit grades" });
+    }
+
+    const grade = await Grade.findOne({ _id: req.params.id, ...req.scopeFilter });
+    if (!grade) {
+      return res.status(404).json({ success: false, message: "Grade not found in your scope" });
+    }
+
+    const editable = ["punctualityScore", "submissionQualityScore", "beneficiaryRatioScore", "taskCompletionScore", "supervisorRemarksScore", "supervisorRemarks"];
+    editable.forEach((field) => {
+      if (req.body[field] !== undefined) grade[field] = req.body[field];
+    });
+
+    grade.totalScore = Math.round(
+      grade.punctualityScore * WEIGHTS.punctualityScore +
+        grade.submissionQualityScore * WEIGHTS.submissionQualityScore +
+        grade.beneficiaryRatioScore * WEIGHTS.beneficiaryRatioScore +
+        grade.taskCompletionScore * WEIGHTS.taskCompletionScore +
+        grade.supervisorRemarksScore * WEIGHTS.supervisorRemarksScore
+    );
+    grade.grade = bucketGrade(grade.totalScore);
+    grade.isAutoGenerated = false;
+    grade.lastEditedBy = req.user._id;
+
+    await grade.save();
+    res.status(200).json({ success: true, grade });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = { generateGrades, getGrades, updateGrade };
