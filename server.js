@@ -23,6 +23,7 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+
 // Uploaded photos are served statically from here (URLs returned by POST /api/upload)
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
