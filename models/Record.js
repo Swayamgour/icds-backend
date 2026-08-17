@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { submissionFields } = require("./shared/submissionFields");
+const { submissionFields, photoProofSchema } = require("./shared/submissionFields");
 
 const recordSchema = new mongoose.Schema(
   {
@@ -12,46 +12,162 @@ const recordSchema = new mongoose.Schema(
     sectorName: { type: String },
     awcName: { type: String },
 
-    date: { type: Date, required: true, default: Date.now },
+    date: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
 
-    registeredChildrenCount: { type: Number, default: 0 },
-    centerOpen: { type: Boolean, default: true },
+    registeredChildrenCount: {
+      type: Number,
+      default: 0,
+    },
+
+    centerOpen: {
+      type: Boolean,
+      default: true,
+    },
+
+    // Today's activity
+    activityStatus: {
+      type: String,
+      enum: ["present", "meeting", "leave"],
+      default: "present",
+    },
 
     // Morning
-    morningMealChildrenCount: { type: Number, default: 0 },
-    morningMenu: { type: String, default: "" },
-    morningDishPhoto: { type: Boolean, default: false },
-    childrenEatingBreakfastPhoto: { type: Boolean, default: false },
-    milkPouchGiven: { type: Boolean, default: false },
-    milkPouchCount: { type: Number, default: 0 },
+    morningMealChildrenCount: {
+      type: Number,
+      default: 0,
+    },
+
+    morningMenu: {
+      type: String,
+      default: "",
+    },
+
+    // Fixed photo slot - Cloudinary url + latitude + longitude + capturedAt.
+    // Undefined/absent means no photo was captured for this record.
+    morningDishPhoto: {
+      type: photoProofSchema,
+    },
+
+    childrenEatingBreakfastPhoto: {
+      type: photoProofSchema,
+    },
+
+    milkPouchGiven: {
+      type: Boolean,
+      default: false,
+    },
+
+    milkPouchCount: {
+      type: Number,
+      default: 0,
+    },
 
     // Afternoon
-    afternoonMealGiven: { type: Boolean, default: false },
-    afternoonMealChildrenCount: { type: Number, default: 0 },
-    afternoonMenu: { type: String, default: "" },
-    afternoonDishPhoto: { type: Boolean, default: false },
-    childrenEatingAfternoonPhoto: { type: Boolean, default: false },
+    afternoonMealGiven: {
+      type: Boolean,
+      default: false,
+    },
+
+    afternoonMealChildrenCount: {
+      type: Number,
+      default: 0,
+    },
+
+    afternoonMenu: {
+      type: String,
+      default: "",
+    },
+
+    afternoonDishPhoto: {
+      type: photoProofSchema,
+    },
+
+    childrenEatingAfternoonPhoto: {
+      type: photoProofSchema,
+    },
 
     // Pre-education
-    preEducationConducted: { type: Boolean, default: false },
-    preEducationChildrenCount: { type: Number, default: 0 },
-    preEducationPhoto: { type: Boolean, default: false },
+    preEducationConducted: {
+      type: Boolean,
+      default: false,
+    },
+
+    preEducationChildrenCount: {
+      type: Number,
+      default: 0,
+    },
+
+    preEducationPhoto: {
+      type: photoProofSchema,
+    },
 
     // Poshan Sudha Yojana
-    poshanDishGiven: { type: Boolean, default: false },
-    poshanMenu: { type: String, default: "" },
-    poshanBenefitGiven: { type: Boolean, default: false },
-    poshanSudhaCount: { type: Number, default: 0 },
-    photoBeneficiariesNutrition: { type: Boolean, default: false },
+    poshanDishGiven: {
+      type: Boolean,
+      default: false,
+    },
 
-    qualityOfMeal: { type: String, enum: ["good", "average", "bad"] },
-    remarks: { type: String },
+    poshanMenu: {
+      type: String,
+      default: "",
+    },
+
+    poshanBenefitGiven: {
+      type: Boolean,
+      default: false,
+    },
+
+    poshanSudhaCount: {
+      type: Number,
+      default: 0,
+    },
+
+    photoBeneficiariesNutrition: {
+      type: photoProofSchema,
+    },
+
+    qualityOfMeal: {
+      type: String,
+      enum: ["good", "average", "bad"],
+    },
+
+    remarks: {
+      type: String,
+    },
 
     ...submissionFields,
 
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-module.exports = mongoose.model("Record", recordSchema);
+// =====================================================
+// ONE AWC = ONE RECORD PER DAY
+// =====================================================
+
+recordSchema.index(
+  {
+    awcCode: 1,
+    date: 1,
+  },
+  {
+    unique: true,
+    name: "unique_awc_daily_record",
+  }
+);
+
+module.exports = mongoose.model(
+  "Record",
+  recordSchema
+);

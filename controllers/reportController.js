@@ -6,6 +6,11 @@ const Grade = require("../models/Grade");
 
 const dateFilterFromQuery = (req) => {
   const filter = { ...req.scopeFilter };
+  // NEW: optional blockCode/sectorCode/awcCode narrowing, same as the
+  // dashboard - lets the export match whatever filter is applied on screen.
+  if (req.query.blockCode) filter.blockCode = req.query.blockCode;
+  if (req.query.sectorCode) filter.sectorCode = req.query.sectorCode;
+  if (req.query.awcCode) filter.awcCode = req.query.awcCode;
   if (req.query.fromDate || req.query.toDate) {
     filter.date = {};
     if (req.query.fromDate) filter.date.$gte = new Date(req.query.fromDate);
@@ -21,6 +26,7 @@ const RECORD_COLUMNS = [
   { header: "AWC", key: "awcName", width: 16 },
   { header: "Registered Children", key: "registeredChildrenCount", width: 10 },
   { header: "Center Open", key: "centerOpen", width: 10 },
+  { header: "Status (Present/Meeting/Leave)", key: "activityStatus", width: 14 },
   { header: "Morning Meal Count", key: "morningMealChildrenCount", width: 10 },
   { header: "Milk Pouch Count", key: "milkPouchCount", width: 10 },
   { header: "Quality", key: "qualityOfMeal", width: 10 },
