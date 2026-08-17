@@ -129,16 +129,16 @@ const createRecord = async (req, res) => {
     // 3. ENTRY WINDOW
     // =====================================================
 
-    if (
-      currentMinutes < startMinutes ||
-      currentMinutes > endMinutes
-    ) {
-      return res.status(403).json({
-        success: false,
-        message:
-          "Daily entry can only be submitted between 9:30 AM and 1:30 PM.",
-      });
-    }
+    // if (
+    //   currentMinutes < startMinutes ||
+    //   currentMinutes > endMinutes
+    // ) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message:
+    //       "Daily entry can only be submitted between 9:30 AM and 1:30 PM.",
+    //   });
+    // }
 
     // =====================================================
     // 4. GET USER AWC SCOPE
