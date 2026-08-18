@@ -65,26 +65,71 @@ const registerUser = async (req, res) => {
 // @access Public
 const loginUser = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { login, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ success: false, message: "email and password are required" });
+    if (!login || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Login code/email and password are required",
+      });
     }
 
-    const user = await User.findOne({ email });
-    if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ success: false, message: "Invalid email or password" });
+    console.log("LOGIN REQUEST:", {
+      login,
+      password,
+    });
+
+    const user = await User.findOne({
+      $or: [
+        { email: login },
+        { districtCode: login },
+        { blockCode: login },
+        { sectorCode: login },
+        { awcCode: login },
+      ],
+    });
+
+    console.log("USER FOUND:", user);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Email/code not found",
+      });
+    }
+
+    const isPasswordValid = await user.matchPassword(password);
+
+    console.log("PASSWORD VALID:", isPasswordValid);
+
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid password",
+      });
     }
 
     if (!user.isActive) {
-      return res.status(403).json({ success: false, message: "Account is deactivated" });
+      return res.status(403).json({
+        success: false,
+        message: "Account is deactivated",
+      });
     }
 
     const token = generateToken(user);
 
-    res.status(200).json({ success: true, token, user });
+    return res.status(200).json({
+      success: true,
+      token,
+      user,
+    });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("LOGIN ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
