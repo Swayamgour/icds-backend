@@ -79,13 +79,25 @@ const loginUser = async (req, res) => {
       password,
     });
 
+    // const user = await User.findOne({
+    //   $or: [
+    //     { email: login },
+    //     { districtCode: login },
+    //     { blockCode: login },
+    //     { sectorCode: login },
+    //     { awcCode: login },
+    //   ],
+    // });
+
+
+
     const user = await User.findOne({
       $or: [
         { email: login },
-        { districtCode: login },
-        { blockCode: login },
-        { sectorCode: login },
-        { awcCode: login },
+        { role: "district", districtCode: login },
+        { role: "block", blockCode: login },
+        { role: "sector", sectorCode: login },
+        { role: "awc", awcCode: login },
       ],
     });
 
