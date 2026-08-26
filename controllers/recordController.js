@@ -442,6 +442,104 @@ const updateRecordPhotos = async (req, res) => {
   }
 };
 
+
+// Fields the AWC user is allowed to touch after creation. Scope fields
+// (districtCode/blockCode/sectorCode/awcCode/*Name), date, status,
+// createdBy, reviewedBy/reviewedAt/reviewRemarks are intentionally left
+// out - those are either server-owned or supervisor-owned.
+const UPDATABLE_RECORD_FIELDS = [
+  "registeredChildrenCount",
+  "centerOpen",
+  "activityStatus",
+  "morningMealChildrenCount",
+  "morningMenu",
+  "morningDishPhoto",
+  "childrenEatingBreakfastPhoto",
+  "milkPouchGiven",
+  "milkPouchCount",
+  "afternoonMealGiven",
+  "afternoonMealChildrenCount",
+  "afternoonMenu",
+  "afternoonDishPhoto",
+  "childrenEatingAfternoonPhoto",
+  "preEducationConducted",
+  "preEducationChildrenCount",
+  "preEducationPhoto",
+  "poshanDishGiven",
+  "poshanMenu",
+  "poshanBenefitGiven",
+  "poshanSudhaCount",
+  "photoBeneficiariesNutrition",
+  "qualityOfMeal",
+  "remarks",
+  "photos",
+  "checkInLatitude",
+  "checkInLongitude",
+];
+
+
+const updateRecord = async (req, res) => {
+  try {
+    if (req.user.role !== ROLES.AWC) {
+      return res.status(403).json({
+        success: false,
+        message: "Only AWC role can update center records",
+      });
+    }
+
+    const record = await Record.findById(req.params.id);
+    if (!record) {
+      return res.status(404).json({ success: false, message: "Record not found" });
+    }
+
+    if (String(record.createdBy) !== String(req.user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only update your own record",
+      });
+    }
+
+    if (record.status !== "pending") {
+      return res.status(409).json({
+        success: false,
+        message: `This record has already been ${record.status} and can no longer be edited.`,
+      });
+    }
+
+    const updates = {};
+    UPDATABLE_RECORD_FIELDS.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        updates[key] = req.body[key];
+      }
+    });
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No updatable fields were sent.",
+      });
+    }
+
+    Object.assign(record, updates);
+    await record.save();
+
+    const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
+
+    return res.status(200).json({
+      success: true,
+      message: "Record updated successfully.",
+      updatedFields: Object.keys(updates),
+      missingPhotos,
+      record,
+    });
+  } catch (err) {
+    console.error("Update Record Error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// 
+
 const getRecords = async (req, res) => {
   try {
     const filter = { ...req.scopeFilter };
@@ -502,4 +600,5 @@ const reviewRecord = async (req, res) => {
   }
 };
 
-module.exports = { createRecord, updateRecordPhotos, getRecords, reviewRecord };
+// module.exports = { createRecord, updateRecordPhotos, getRecords, reviewRecord };
+module.exports = { createRecord, updateRecord, updateRecordPhotos, getRecords, reviewRecord };

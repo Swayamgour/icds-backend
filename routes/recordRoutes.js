@@ -5,6 +5,7 @@ const buildScopeFilter = require("../middleware/scopeFilter");
 const { recordPhotoUpload } = require("../middleware/recordPhotoUpload");
 const {
   createRecord,
+  updateRecord,
   updateRecordPhotos,
   getRecords,
   reviewRecord,
@@ -19,6 +20,9 @@ router.use(protect, buildScopeFilter);
 // Photos are optional here - you can send none, some, or all 6 now and
 // add the rest later.
 router.post("/", recordPhotoUpload, createRecord); // awc role only
+
+router.put("/:id", updateRecord);   // JSON body
+router.patch("/:id", updateRecord);
 
 // Add/replace one or more photo slots on today's own record, one call at a
 // time (e.g. morning photo now, afternoon photo a few hours later) - as
