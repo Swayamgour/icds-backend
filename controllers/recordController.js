@@ -783,21 +783,74 @@ const updateRecord = async (req, res) => {
 const getRecords = async (req, res) => {
   try {
     const filter = { ...req.scopeFilter };
-    if (req.query.status) filter.status = req.query.status;
+
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
     if (req.query.fromDate || req.query.toDate) {
       filter.date = {};
-      if (req.query.fromDate) filter.date.$gte = new Date(req.query.fromDate);
-      if (req.query.toDate) filter.date.$lte = new Date(req.query.toDate);
+
+      if (req.query.fromDate) {
+        filter.date.$gte = new Date(req.query.fromDate);
+      }
+
+      if (req.query.toDate) {
+        filter.date.$lte = new Date(req.query.toDate);
+      }
     }
 
     const records = await Record.find(filter)
       .populate("createdBy", "name")
       .populate("reviewedBy", "name")
-      .sort({ date: -1 });
+      .sort({ date: -1 })
+      .lean();
 
-    res.status(200).json({ success: true, count: records.length, records });
+    const formattedRecords = records.map((record) => {
+      const photos = [
+        {
+          key: "morningDishPhoto",
+          ...record.morningDishPhoto,
+        },
+        {
+          key: "childrenEatingBreakfastPhoto",
+          ...record.childrenEatingBreakfastPhoto,
+        },
+        {
+          key: "afternoonDishPhoto",
+          ...record.afternoonDishPhoto,
+        },
+        {
+          key: "childrenEatingAfternoonPhoto",
+          ...record.childrenEatingAfternoonPhoto,
+        },
+        {
+          key: "preEducationPhoto",
+          ...record.preEducationPhoto,
+        },
+        {
+          key: "photoBeneficiariesNutrition",
+          ...record.photoBeneficiariesNutrition,
+        },
+      ].filter((photo) => photo.url);
+
+      return {
+        ...record,
+        photos,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: formattedRecords.length,
+      records: formattedRecords,
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
