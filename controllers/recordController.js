@@ -592,7 +592,7 @@ const updateRecordPhotos = async (req, res) => {
       message:
         missingPhotos.length > 0
           ? "Photo(s) saved. Still missing: " +
-            missingPhotos.join(", ")
+          missingPhotos.join(", ")
           : "Photo(s) saved. All 6 required photos are now uploaded.",
 
       updatedFields: Object.keys(photoFields),
@@ -626,26 +626,27 @@ const UPDATABLE_RECORD_FIELDS = [
   "activityStatus",
   "morningMealChildrenCount",
   "morningMenu",
-  "morningDishPhoto",
-  "childrenEatingBreakfastPhoto",
+
   "milkPouchGiven",
   "milkPouchCount",
+
   "afternoonMealGiven",
   "afternoonMealChildrenCount",
   "afternoonMenu",
-  "afternoonDishPhoto",
-  "childrenEatingAfternoonPhoto",
+
   "preEducationConducted",
   "preEducationChildrenCount",
-  "preEducationPhoto",
+
   "poshanDishGiven",
   "poshanMenu",
   "poshanBenefitGiven",
   "poshanSudhaCount",
-  "photoBeneficiariesNutrition",
+
   "qualityOfMeal",
   "remarks",
+
   "photos",
+
   "checkInLatitude",
   "checkInLongitude",
 ];
@@ -653,6 +654,10 @@ const UPDATABLE_RECORD_FIELDS = [
 
 const updateRecord = async (req, res) => {
   try {
+    // =====================================================
+    // 1. ONLY AWC USER
+    // =====================================================
+
     if (req.user.role !== ROLES.AWC) {
       return res.status(403).json({
         success: false,
@@ -660,10 +665,22 @@ const updateRecord = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 2. FIND RECORD
+    // =====================================================
+
     const record = await Record.findById(req.params.id);
+
     if (!record) {
-      return res.status(404).json({ success: false, message: "Record not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Record not found",
+      });
     }
+
+    // =====================================================
+    // 3. ONLY RECORD CREATOR
+    // =====================================================
 
     if (String(record.createdBy) !== String(req.user._id)) {
       return res.status(403).json({
@@ -672,6 +689,10 @@ const updateRecord = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 4. ONLY PENDING RECORD
+    // =====================================================
+
     if (record.status !== "pending") {
       return res.status(409).json({
         success: false,
@@ -679,12 +700,35 @@ const updateRecord = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 5. BUILD UPDATES
+    // =====================================================
+
     const updates = {};
+
     UPDATABLE_RECORD_FIELDS.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, key)
+      ) {
         updates[key] = req.body[key];
       }
     });
+
+    // =====================================================
+    // 6. IMPORTANT:
+    // PHOTO FIELDS ARE NOT UPDATED HERE
+    // =====================================================
+    //
+    // Photos must be uploaded using:
+    //
+    // PATCH /api/records/:id/photos
+    //
+    // Therefore if frontend sends:
+    //
+    // morningDishPhoto: false
+    //
+    // it will simply be ignored.
+    //
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
@@ -693,10 +737,29 @@ const updateRecord = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 7. UPDATE RECORD
+    // =====================================================
+
     Object.assign(record, updates);
+
+    // =====================================================
+    // 8. SAVE
+    // =====================================================
+
     await record.save();
 
-    const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
+    // =====================================================
+    // 9. CHECK MISSING PHOTOS
+    // =====================================================
+
+    const missingPhotos = RECORD_PHOTO_FIELDS.filter(
+      (fieldName) => !record[fieldName]
+    );
+
+    // =====================================================
+    // 10. RESPONSE
+    // =====================================================
 
     return res.status(200).json({
       success: true,
@@ -707,7 +770,11 @@ const updateRecord = async (req, res) => {
     });
   } catch (err) {
     console.error("Update Record Error:", err);
-    return res.status(500).json({ success: false, message: err.message });
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
