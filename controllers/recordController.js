@@ -129,16 +129,19 @@ const createRecord = async (req, res) => {
     // 3. ENTRY WINDOW
     // =====================================================
 
-    // if (
-    //   currentMinutes < startMinutes ||
-    //   currentMinutes > endMinutes
-    // ) {
-    //   return res.status(403).json({
-    //     success: false,
-    //     message:
-    //       "Daily entry can only be submitted between 9:30 AM and 1:30 PM.",
-    //   });
-    // }
+    // Enable this when you want to enforce 9:30 AM - 1:30 PM
+    /*
+    if (
+      currentMinutes < startMinutes ||
+      currentMinutes > endMinutes
+    ) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Daily entry can only be submitted between 9:30 AM and 1:30 PM.",
+      });
+    }
+    */
 
     // =====================================================
     // 4. GET USER AWC SCOPE
@@ -207,30 +210,19 @@ const createRecord = async (req, res) => {
     // =====================================================
     // 6. CREATE INDIA DAY RANGE
     // =====================================================
-    //
-    // Current day according to Asia/Kolkata.
-    //
-    // Example:
-    // 17 August 2026
-    //
-    // start:
-    // 17 Aug 2026 00:00:00 IST
-    //
-    // end:
-    // 17 Aug 2026 23:59:59.999 IST
-    //
-    // =====================================================
 
     const dayStart = new Date(
-      `${year}-${String(month).padStart(2, "0")}-${String(
-        day
-      ).padStart(2, "0")}T00:00:00+05:30`
+      `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+        2,
+        "0"
+      )}T00:00:00+05:30`
     );
 
     const dayEnd = new Date(
-      `${year}-${String(month).padStart(2, "0")}-${String(
-        day
-      ).padStart(2, "0")}T23:59:59.999+05:30`
+      `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
+        2,
+        "0"
+      )}T23:59:59.999+05:30`
     );
 
     // =====================================================
@@ -255,33 +247,106 @@ const createRecord = async (req, res) => {
     }
 
     // =====================================================
-    // 8. BUILD PHOTO FIELDS (uploaded to Cloudinary by recordPhotoUpload)
+    // 8. BUILD PHOTO FIELDS
     // =====================================================
-    // Photos are NOT required at creation time anymore. You can create the
-    // record with zero, some, or all 6 photos, and add/replace the rest
-    // later - one at a time - via PATCH /api/records/:id/photos, right up
-    // until a supervisor reviews it.
+
+    // Only actually uploaded photos will be returned here.
+    // Example:
+    //
+    // {
+    //   morningDishPhoto: {
+    //     url: "...",
+    //     publicId: "...",
+    //     latitude: 26.123,
+    //     longitude: 80.123,
+    //     capturedAt: Date
+    //   }
+    // }
+    //
+    // If no photo was uploaded, that field will NOT exist.
 
     const { photoFields, extraPhotos } = await buildPhotoFields(req);
 
     // =====================================================
-    // 9. CREATE RECORD
+    // 9. CLEAN REQUEST BODY
     // =====================================================
 
-    const existingPhotos = req.body.photos;
+    // Copy req.body so we don't modify req.body directly.
+    const recordData = {
+      ...req.body,
+    };
+
+    // -----------------------------------------------------
+    // IMPORTANT:
+    // Remove photo fields coming from req.body.
+    //
+    // Why?
+    // Frontend may send:
+    //
+    // morningDishPhoto: false
+    //
+    // But MongoDB schema expects an OBJECT, not boolean.
+    //
+    // Actual uploaded photos will be added back below
+    // from photoFields.
+    // -----------------------------------------------------
+
+    RECORD_PHOTO_FIELDS.forEach((fieldName) => {
+      delete recordData[fieldName];
+    });
+
+    // -----------------------------------------------------
+    // Also don't allow frontend to directly control these.
+    // -----------------------------------------------------
+
+    delete recordData.districtCode;
+    delete recordData.blockCode;
+    delete recordData.sectorCode;
+    delete recordData.awcCode;
+
+    delete recordData.blockName;
+    delete recordData.sectorName;
+    delete recordData.awcName;
+
+    delete recordData.createdBy;
+    delete recordData.status;
+    delete recordData.date;
+
+    // =====================================================
+    // 10. EXTRA PHOTOS
+    // =====================================================
+
+    const existingPhotos = Array.isArray(req.body.photos)
+      ? req.body.photos
+      : [];
+
     const mergedPhotos = [
-      ...(Array.isArray(existingPhotos) ? existingPhotos : []),
+      ...existingPhotos,
       ...extraPhotos,
     ];
 
+    // =====================================================
+    // 11. CREATE RECORD
+    // =====================================================
+
     const record = await Record.create({
-      ...req.body,
+      ...recordData,
 
       // -----------------------------------------------
-      // Fixed photo slots + any extra generic photos
+      // ACTUAL uploaded fixed-slot photos
       // -----------------------------------------------
-
+      //
+      // Only fields that actually contain a photo
+      // will be added here.
+      //
+      // No photo = field does not exist.
+      //
       ...photoFields,
+
+      // -----------------------------------------------
+      // Extra generic photos
+      // -----------------------------------------------
+
       photos: mergedPhotos,
 
       // -----------------------------------------------
@@ -298,45 +363,53 @@ const createRecord = async (req, res) => {
       awcName: awc.name,
 
       // -----------------------------------------------
-      // IMPORTANT:
-      // Save normalized date for daily uniqueness
+      // NORMALIZED DATE
       // -----------------------------------------------
 
       date: dayStart,
 
       // -----------------------------------------------
-      // Actual submission time
+      // ACTUAL SUBMISSION TIME
       // -----------------------------------------------
 
       checkInTime:
         req.body.checkInTime || now,
 
       // -----------------------------------------------
-      // Status
+      // STATUS
       // -----------------------------------------------
 
       status: "pending",
 
       // -----------------------------------------------
-      // Creator
+      // CREATOR
       // -----------------------------------------------
 
       createdBy: req.user._id,
     });
 
     // =====================================================
-    // 10. RESPONSE
+    // 12. CHECK MISSING PHOTOS
     // =====================================================
 
-    const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
+    const missingPhotos = RECORD_PHOTO_FIELDS.filter(
+      (fieldName) => !record[fieldName]
+    );
+
+    // =====================================================
+    // 13. RESPONSE
+    // =====================================================
 
     return res.status(201).json({
       success: true,
+
       message:
         missingPhotos.length > 0
           ? "Record created. You can add the remaining photos anytime via PATCH /api/records/:id/photos."
           : "Today's record submitted successfully.",
+
       missingPhotos,
+
       record,
     });
   } catch (err) {
@@ -352,10 +425,11 @@ const createRecord = async (req, res) => {
       });
     }
 
-    console.error(
-      "Create Record Error:",
-      err
-    );
+    // =====================================================
+    // VALIDATION ERROR
+    // =====================================================
+
+    console.error("Create Record Error:", err);
 
     return res.status(500).json({
       success: false,
