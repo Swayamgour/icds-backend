@@ -810,29 +810,44 @@ const getRecords = async (req, res) => {
       const photos = [
         {
           key: "morningDishPhoto",
-          ...record.morningDishPhoto,
+          label: "Morning Breakfast",
+          photo: record.morningDishPhoto,
         },
         {
           key: "childrenEatingBreakfastPhoto",
-          ...record.childrenEatingBreakfastPhoto,
+          label: "Children Eating Breakfast",
+          photo: record.childrenEatingBreakfastPhoto,
         },
         {
           key: "afternoonDishPhoto",
-          ...record.afternoonDishPhoto,
+          label: "Afternoon Meal",
+          photo: record.afternoonDishPhoto,
         },
         {
           key: "childrenEatingAfternoonPhoto",
-          ...record.childrenEatingAfternoonPhoto,
+          label: "Children Eating Afternoon Meal",
+          photo: record.childrenEatingAfternoonPhoto,
         },
         {
           key: "preEducationPhoto",
-          ...record.preEducationPhoto,
+          label: "Pre-Education",
+          photo: record.preEducationPhoto,
         },
         {
           key: "photoBeneficiariesNutrition",
-          ...record.photoBeneficiariesNutrition,
+          label: "Nutrition Beneficiaries",
+          photo: record.photoBeneficiariesNutrition,
         },
-      ].filter((photo) => photo.url);
+      ]
+        .filter((item) => item.photo?.url)
+        .map((item) => ({
+          key: item.key,
+          label: item.label,
+          url: item.photo.url,
+          latitude: item.photo.latitude,
+          longitude: item.photo.longitude,
+          capturedAt: item.photo.capturedAt,
+        }));
 
       return {
         ...record,
