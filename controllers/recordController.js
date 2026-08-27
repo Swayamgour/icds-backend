@@ -449,6 +449,10 @@ const createRecord = async (req, res) => {
 // @access Private (AWC role, own record only)
 const updateRecordPhotos = async (req, res) => {
   try {
+    // =====================================================
+    // 1. ONLY AWC USER
+    // =====================================================
+
     if (req.user.role !== ROLES.AWC) {
       return res.status(403).json({
         success: false,
@@ -456,10 +460,22 @@ const updateRecordPhotos = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 2. FIND RECORD
+    // =====================================================
+
     const record = await Record.findById(req.params.id);
+
     if (!record) {
-      return res.status(404).json({ success: false, message: "Record not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Record not found",
+      });
     }
+
+    // =====================================================
+    // 3. ONLY RECORD CREATOR CAN UPDATE
+    // =====================================================
 
     if (String(record.createdBy) !== String(req.user._id)) {
       return res.status(403).json({
@@ -468,6 +484,10 @@ const updateRecordPhotos = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 4. ONLY PENDING RECORD
+    // =====================================================
+
     if (record.status !== "pending") {
       return res.status(409).json({
         success: false,
@@ -475,46 +495,125 @@ const updateRecordPhotos = async (req, res) => {
       });
     }
 
+    // =====================================================
+    // 5. CHECK FILE
+    // =====================================================
+
     const hasAnyFile =
       req.files &&
-      (RECORD_PHOTO_FIELDS.some((f) => req.files[f]?.[0]) || req.files.photos?.length);
+      (
+        RECORD_PHOTO_FIELDS.some(
+          (fieldName) => req.files[fieldName]?.[0]
+        ) ||
+        (req.files.photos && req.files.photos.length > 0)
+      );
 
     if (!hasAnyFile) {
       return res.status(400).json({
         success: false,
         message:
-          "No photo file received. Send at least one of: " + RECORD_PHOTO_FIELDS.join(", "),
+          "No photo file received. Send at least one of: " +
+          RECORD_PHOTO_FIELDS.join(", "),
       });
     }
 
-    const { photoFields, extraPhotos } = await buildPhotoFields(req);
+    // =====================================================
+    // 6. BUILD ACTUAL PHOTO OBJECTS
+    // =====================================================
 
-    // Only overwrite the slots that were actually sent in this call -
-    // everything else on the record stays exactly as it was.
-    Object.assign(record, photoFields);
+    const { photoFields, extraPhotos } =
+      await buildPhotoFields(req);
+
+    // =====================================================
+    // 7. REMOVE INVALID OLD PHOTO VALUES
+    // =====================================================
+    //
+    // If old record contains:
+    //
+    // morningDishPhoto: false
+    //
+    // Mongoose will fail on record.save().
+    //
+    // So remove false/null/empty-string values.
+    //
+
+    RECORD_PHOTO_FIELDS.forEach((fieldName) => {
+      const currentValue = record[fieldName];
+
+      if (
+        currentValue === false ||
+        currentValue === null ||
+        currentValue === ""
+      ) {
+        record.set(fieldName, undefined);
+      }
+    });
+
+    // =====================================================
+    // 8. ADD NEW UPLOADED PHOTO OBJECTS
+    // =====================================================
+
+    Object.keys(photoFields).forEach((fieldName) => {
+      record.set(fieldName, photoFields[fieldName]);
+    });
+
+    // =====================================================
+    // 9. ADD EXTRA PHOTOS
+    // =====================================================
+
     if (extraPhotos.length > 0) {
-      record.photos = [...(record.photos || []), ...extraPhotos];
+      record.photos = [
+        ...(record.photos || []),
+        ...extraPhotos,
+      ];
     }
+
+    // =====================================================
+    // 10. SAVE
+    // =====================================================
 
     await record.save();
 
-    const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
+    // =====================================================
+    // 11. CHECK MISSING PHOTOS
+    // =====================================================
 
-    res.status(200).json({
+    const missingPhotos = RECORD_PHOTO_FIELDS.filter(
+      (fieldName) => !record[fieldName]
+    );
+
+    // =====================================================
+    // 12. RESPONSE
+    // =====================================================
+
+    return res.status(200).json({
       success: true,
+
       message:
         missingPhotos.length > 0
-          ? "Photo(s) saved. Still missing: " + missingPhotos.join(", ")
+          ? "Photo(s) saved. Still missing: " +
+            missingPhotos.join(", ")
           : "Photo(s) saved. All 6 required photos are now uploaded.",
+
       updatedFields: Object.keys(photoFields),
+
       missingPhotos,
+
       record,
     });
   } catch (err) {
-    console.error("Update Record Photos Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    console.error(
+      "Update Record Photos Error:",
+      err
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
+
 
 
 // Fields the AWC user is allowed to touch after creation. Scope fields
