@@ -63,6 +63,51 @@ async function buildPhotoFields(req) {
   return { photoFields, extraPhotos };
 }
 
+// The frontend (PhotoGpsCapture) uploads each photo straight to Cloudinary
+// the moment it's taken, then submits the record with the resulting
+// { url, latitude, longitude, capturedAt } object already sitting on each
+// of the 6 named fields (morningDishPhoto, etc.) - as plain JSON, not a
+// multipart file. That's a perfectly valid, already-uploaded photo and
+// should be trusted, not discarded.
+//
+// The only thing we must NOT trust as-is is junk the frontend sometimes
+// sends for a field with no photo yet, e.g. `morningDishPhoto: false`,
+// which would blow up the Mongoose schema (it expects an object, not a
+// boolean/string). So: keep it if it looks like a real photo object
+// (has a string `url`), otherwise drop it.
+//
+// Returns { trustedPhotoFields } - safe to merge into the record alongside
+// (and layered under) `photoFields` from buildPhotoFields, so an actual
+// multipart file upload in the same request always wins over a JSON one.
+function extractTrustedPhotoFields(body, fallbackLat, fallbackLng) {
+  const trustedPhotoFields = {};
+
+  RECORD_PHOTO_FIELDS.forEach((fieldName) => {
+    const val = body[fieldName];
+
+    const looksLikePhoto =
+      val &&
+      typeof val === "object" &&
+      typeof val.url === "string" &&
+      val.url.length > 0;
+
+    if (!looksLikePhoto) return;
+
+    const lat = val.latitude ?? fallbackLat;
+    const lng = val.longitude ?? fallbackLng;
+
+    trustedPhotoFields[fieldName] = {
+      url: val.url,
+      publicId: val.publicId, // present if it was uploaded via cloudinaryUpload client-side helper
+      latitude: lat !== undefined && lat !== null && lat !== "" ? Number(lat) : undefined,
+      longitude: lng !== undefined && lng !== null && lng !== "" ? Number(lng) : undefined,
+      capturedAt: val.capturedAt ? new Date(val.capturedAt) : new Date(),
+    };
+  });
+
+  return trustedPhotoFields;
+}
+
 // NEW: AWC daily entry can only be submitted between 9:30 AM and 1:30 PM
 // (India Standard Time). This mirrors the client-side check in
 // WorkerEntry.jsx, but must also be enforced here since the client check
@@ -278,18 +323,29 @@ const createRecord = async (req, res) => {
 
     // -----------------------------------------------------
     // IMPORTANT:
-    // Remove photo fields coming from req.body.
+    // Pull out any already-uploaded photo objects the frontend sent as
+    // JSON (PhotoGpsCapture uploads to Cloudinary client-side and sends
+    // back { url, latitude, longitude, capturedAt } on each of the 6
+    // named fields) BEFORE we strip those fields off recordData.
     //
-    // Why?
-    // Frontend may send:
+    // We still strip the raw fields off recordData afterwards, because
+    // the frontend may instead send junk like:
     //
     // morningDishPhoto: false
     //
-    // But MongoDB schema expects an OBJECT, not boolean.
+    // and MongoDB schema expects an OBJECT, not a boolean. Anything that
+    // doesn't look like a real photo object is simply dropped here.
     //
-    // Actual uploaded photos will be added back below
-    // from photoFields.
+    // Actual multipart file uploads (from buildPhotoFields/req.files) are
+    // added back below and take priority over these trusted JSON ones if
+    // both were somehow sent in the same request.
     // -----------------------------------------------------
+
+    const trustedPhotoFields = extractTrustedPhotoFields(
+      req.body,
+      req.body.checkInLatitude,
+      req.body.checkInLongitude
+    );
 
     RECORD_PHOTO_FIELDS.forEach((fieldName) => {
       delete recordData[fieldName];
@@ -337,10 +393,13 @@ const createRecord = async (req, res) => {
       // -----------------------------------------------
       //
       // Only fields that actually contain a photo
-      // will be added here.
+      // will be added here. Trusted JSON-uploaded photos go in first,
+      // then any multipart file uploads in the same request override
+      // them field-by-field.
       //
       // No photo = field does not exist.
       //
+      ...trustedPhotoFields,
       ...photoFields,
 
       // -----------------------------------------------
@@ -715,20 +774,33 @@ const updateRecord = async (req, res) => {
     });
 
     // =====================================================
-    // 6. IMPORTANT:
-    // PHOTO FIELDS ARE NOT UPDATED HERE
+    // 6. TRUSTED JSON PHOTO OBJECTS
     // =====================================================
     //
-    // Photos must be uploaded using:
+    // PhotoGpsCapture uploads to Cloudinary client-side and sends back
+    // { url, latitude, longitude, capturedAt } on each of the 6 named
+    // photo fields - a real, already-hosted photo, not a raw file. Editing
+    // a record (e.g. adding a photo that was missing at first submission)
+    // goes through this JSON endpoint, so those trusted objects must be
+    // kept here, not silently dropped.
+    //
+    // Actual multipart file uploads still go through:
     //
     // PATCH /api/records/:id/photos
     //
-    // Therefore if frontend sends:
+    // and that path is untouched - callers can use either.
     //
-    // morningDishPhoto: false
+    // Anything that isn't a real photo object (e.g. frontend sending
+    // `morningDishPhoto: false`) is still ignored.
     //
-    // it will simply be ignored.
-    //
+
+    const trustedPhotoFields = extractTrustedPhotoFields(
+      req.body,
+      req.body.checkInLatitude,
+      req.body.checkInLongitude
+    );
+
+    Object.assign(updates, trustedPhotoFields);
 
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({
