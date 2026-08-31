@@ -957,16 +957,16 @@ const reviewRecord = async (req, res) => {
       return res.status(404).json({ success: false, message: "Record not found in your scope" });
     }
 
-    if (status === "approved") {
-      const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
-      if (missingPhotos.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Cannot approve - missing photo(s): ${missingPhotos.join(", ")}`,
-          missingPhotos,
-        });
-      }
-    }
+    // if (status === "approved") {
+    //   const missingPhotos = RECORD_PHOTO_FIELDS.filter((f) => !record[f]);
+    //   if (missingPhotos.length > 0) {
+    //     return res.status(400).json({
+    //       success: false,
+    //       message: `Cannot approve - missing photo(s): ${missingPhotos.join(", ")}`,
+    //       missingPhotos,
+    //     });
+    //   }
+    // }
 
     record.status = status;
     record.reviewedBy = req.user._id;
