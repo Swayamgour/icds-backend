@@ -16,7 +16,7 @@ const DISTRICT_NAME = "Dahod";
 
 // Every seeded login (district/block/sector/awc) shares this password.
 // Change it after first login in production.
-const DEFAULT_PASSWORD = "Password@123";
+const DEFAULT_PASSWORD = "Pass1234";
 const SALT_ROUNDS = 10;
 
 // Drops the 1 blank row present in the source sheet (no block/sector/awc code)

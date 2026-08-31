@@ -6,7 +6,9 @@ const Sector = require("../models/Sector");
 const Awc = require("../models/Awc");
 const Record = require("../models/Record");
 
-const LEVELS = ["district", "block", "sector"];
+// NOTE: "awc" added as a 4th displayable level.
+// district -> block -> sector -> awc
+const LEVELS = ["district", "block", "sector", "awc"];
 
 const HIERARCHY_FIELDS = [
   "districtCode",
@@ -425,6 +427,43 @@ const getDashboard = async (req, res) => {
         .lean();
     }
 
+    // -----------------------------------------------------
+    // AWC  (NEW — leaf level)
+    // -----------------------------------------------------
+
+    if (level === "awc") {
+      const awcMasterFilter = {};
+
+      if (hasValue(scope.districtCode)) {
+        awcMasterFilter.districtCode =
+          scope.districtCode;
+      }
+
+      if (hasValue(scope.blockCode)) {
+        awcMasterFilter.blockCode =
+          scope.blockCode;
+      }
+
+      if (hasValue(scope.sectorCode)) {
+        awcMasterFilter.sectorCode =
+          scope.sectorCode;
+      }
+
+      // Awc model uses `code`, not `awcCode`.
+      if (selectedAwcCode) {
+        awcMasterFilter.code =
+          selectedAwcCode;
+      }
+
+      masterRows = await Awc.find(
+        awcMasterFilter
+      )
+        .select(
+          "code name districtCode blockCode sectorCode"
+        )
+        .lean();
+    }
+
     // =====================================================
     // 7. STRUCTURAL TOTALS
     // =====================================================
@@ -567,6 +606,10 @@ const getDashboard = async (req, res) => {
     // -----------------------------------------------------
     // TOTAL AWCs
     // -----------------------------------------------------
+    // NOTE: this grouping is generic — for level === "awc" it will
+    // simply count 1 per AWC (since groupField becomes $awcCode).
+    // The frontend does not render this column at the "awc" level,
+    // so it is harmless to compute it the same way for every level.
 
     const awcFilter = {};
 
