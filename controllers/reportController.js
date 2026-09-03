@@ -6,16 +6,59 @@ const Grade = require("../models/Grade");
 
 const dateFilterFromQuery = (req) => {
   const filter = { ...req.scopeFilter };
-  // NEW: optional blockCode/sectorCode/awcCode narrowing, same as the
-  // dashboard - lets the export match whatever filter is applied on screen.
-  if (req.query.blockCode) filter.blockCode = req.query.blockCode;
-  if (req.query.sectorCode) filter.sectorCode = req.query.sectorCode;
-  if (req.query.awcCode) filter.awcCode = req.query.awcCode;
-  if (req.query.fromDate || req.query.toDate) {
-    filter.date = {};
-    if (req.query.fromDate) filter.date.$gte = new Date(req.query.fromDate);
-    if (req.query.toDate) filter.date.$lte = new Date(req.query.toDate);
+
+  // =====================================
+  // LOCATION FILTERS
+  // =====================================
+
+  if (req.query.blockCode) {
+    filter.blockCode = req.query.blockCode;
   }
+
+  if (req.query.sectorCode) {
+    filter.sectorCode = req.query.sectorCode;
+  }
+
+  if (req.query.awcCode) {
+    filter.awcCode = req.query.awcCode;
+  }
+
+  const { fromDate, toDate } = req.query;
+
+  // =====================================
+  // DATE FILTER - INDIA TIMEZONE
+  // =====================================
+
+  if (fromDate || toDate) {
+    filter.date = {};
+
+    if (fromDate) {
+      filter.date.$gte = new Date(
+        `${fromDate}T00:00:00.000+05:30`
+      );
+    }
+
+    if (toDate) {
+      filter.date.$lte = new Date(
+        `${toDate}T23:59:59.999+05:30`
+      );
+    }
+
+    // If only fromDate is provided,
+    // filter that complete single day
+    if (fromDate && !toDate) {
+      filter.date.$lte = new Date(
+        `${fromDate}T23:59:59.999+05:30`
+      );
+    }
+
+    // If only toDate is provided,
+    // optionally handle everything up to that day
+    if (!fromDate && toDate) {
+      delete filter.date.$gte;
+    }
+  }
+
   return filter;
 };
 

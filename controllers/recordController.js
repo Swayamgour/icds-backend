@@ -121,6 +121,67 @@ function isWithinEntryWindow(d = new Date()) {
   return istMinutesOfDay >= ENTRY_WINDOW_START_MIN && istMinutesOfDay <= ENTRY_WINDOW_END_MIN;
 }
 
+
+
+
+// ======================================================
+// GET CHILDREN 3-6 YEARS COUNT FOR LOGGED-IN AWC
+// ======================================================
+const getAwcChildrenCount = async (req, res) => {
+  try {
+    // Only AWC user should access this
+    if (req.user.role !== "awc") {
+      return res.status(403).json({
+        success: false,
+        message: "Only AWC users can access this data",
+      });
+    }
+
+    if (!req.user.awcCode) {
+      return res.status(400).json({
+        success: false,
+        message: "AWC code not found for logged-in user",
+      });
+    }
+
+    const awc = await Awc.findOne({
+      code: req.user.awcCode,
+    })
+      .select(
+        "code name districtCode blockCode sectorCode children3To6Y"
+      )
+      .lean();
+
+    if (!awc) {
+      return res.status(404).json({
+        success: false,
+        message: "AWC not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        awcCode: awc.code,
+        awcName: awc.name,
+
+        districtCode: awc.districtCode,
+        blockCode: awc.blockCode,
+        sectorCode: awc.sectorCode,
+
+        children3To6Y: awc.children3To6Y || 0,
+      },
+    });
+  } catch (err) {
+    console.error("GET AWC CHILDREN COUNT ERROR:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
 const createRecord = async (req, res) => {
   try {
     // =====================================================
@@ -320,6 +381,50 @@ const createRecord = async (req, res) => {
     const recordData = {
       ...req.body,
     };
+
+    // =====================================================
+    // VALIDATE CHILDREN COUNTS
+    // =====================================================
+
+    const registeredChildrenCount = Number(
+      recordData.registeredChildrenCount ?? 0
+    );
+
+    const childrenAttendedCount = Number(
+      recordData.childrenAttendedCount ?? 0
+    );
+
+    if (
+      !Number.isFinite(registeredChildrenCount) ||
+      registeredChildrenCount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "registeredChildrenCount must be a valid non-negative number",
+      });
+    }
+
+    if (
+      !Number.isFinite(childrenAttendedCount) ||
+      childrenAttendedCount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "childrenAttendedCount must be a valid non-negative number",
+      });
+    }
+
+    if (childrenAttendedCount > registeredChildrenCount) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Children attended count cannot be greater than registered children count",
+      });
+    }
+
+    // Save normalized values
+    recordData.registeredChildrenCount = registeredChildrenCount;
+    recordData.childrenAttendedCount = childrenAttendedCount;
 
     // -----------------------------------------------------
     // IMPORTANT:
@@ -680,32 +785,41 @@ const updateRecordPhotos = async (req, res) => {
 // createdBy, reviewedBy/reviewedAt/reviewRemarks are intentionally left
 // out - those are either server-owned or supervisor-owned.
 const UPDATABLE_RECORD_FIELDS = [
+  // General
   "registeredChildrenCount",
+  "childrenAttendedCount",
   "centerOpen",
   "activityStatus",
+
+  // Morning
   "morningMealChildrenCount",
   "morningMenu",
-
   "milkPouchGiven",
   "milkPouchCount",
 
+  // Afternoon
   "afternoonMealGiven",
   "afternoonMealChildrenCount",
   "afternoonMenu",
 
+  // Pre Education
   "preEducationConducted",
   "preEducationChildrenCount",
 
+  // Poshan Sudha
   "poshanDishGiven",
   "poshanMenu",
   "poshanBenefitGiven",
   "poshanSudhaCount",
 
+  // Other
   "qualityOfMeal",
   "remarks",
 
+  // Extra photos
   "photos",
 
+  // GPS
   "checkInLatitude",
   "checkInLongitude",
 ];
@@ -810,14 +924,67 @@ const updateRecord = async (req, res) => {
     }
 
     // =====================================================
-    // 7. UPDATE RECORD
+    // VALIDATE CHILDREN COUNTS
+    // =====================================================
+
+    // Existing value or new value
+    const registeredChildrenCount =
+      updates.registeredChildrenCount !== undefined
+        ? Number(updates.registeredChildrenCount)
+        : Number(record.registeredChildrenCount ?? 0);
+
+    const childrenAttendedCount =
+      updates.childrenAttendedCount !== undefined
+        ? Number(updates.childrenAttendedCount)
+        : Number(record.childrenAttendedCount ?? 0);
+
+    // Validate registered count
+    if (
+      !Number.isFinite(registeredChildrenCount) ||
+      registeredChildrenCount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "registeredChildrenCount must be a valid non-negative number",
+      });
+    }
+
+    // Validate attended count
+    if (
+      !Number.isFinite(childrenAttendedCount) ||
+      childrenAttendedCount < 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "childrenAttendedCount must be a valid non-negative number",
+      });
+    }
+
+    // Attended cannot exceed registered
+    if (childrenAttendedCount > registeredChildrenCount) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Children attended count cannot be greater than registered children count",
+      });
+    }
+
+    // Normalize values before saving
+    if (updates.registeredChildrenCount !== undefined) {
+      updates.registeredChildrenCount = registeredChildrenCount;
+    }
+
+    if (updates.childrenAttendedCount !== undefined) {
+      updates.childrenAttendedCount = childrenAttendedCount;
+    }
+
+    // =====================================================
+    // UPDATE RECORD
     // =====================================================
 
     Object.assign(record, updates);
-
-    // =====================================================
-    // 8. SAVE
-    // =====================================================
 
     await record.save();
 
@@ -863,14 +1030,27 @@ const getRecords = async (req, res) => {
     if (req.query.fromDate || req.query.toDate) {
       filter.date = {};
 
+      // ==============================
+      // FROM DATE
+      // ==============================
       if (req.query.fromDate) {
-        filter.date.$gte = new Date(req.query.fromDate);
+        const fromDate = new Date(`${req.query.fromDate}T00:00:00.000`);
+
+        filter.date.$gte = fromDate;
       }
 
+      // ==============================
+      // TO DATE
+      // ==============================
       if (req.query.toDate) {
-        filter.date.$lte = new Date(req.query.toDate);
+        const toDate = new Date(`${req.query.toDate}T23:59:59.999`);
+
+        filter.date.$lte = toDate;
       }
     }
+
+    console.log("QUERY:", req.query);
+    console.log("FINAL FILTER:", JSON.stringify(filter, null, 2));
 
     const records = await Record.find(filter)
       .populate("createdBy", "name")
@@ -934,6 +1114,8 @@ const getRecords = async (req, res) => {
     });
 
   } catch (err) {
+    console.error("GET RECORDS ERROR:", err);
+
     res.status(500).json({
       success: false,
       message: err.message,
@@ -981,4 +1163,4 @@ const reviewRecord = async (req, res) => {
 };
 
 // module.exports = { createRecord, updateRecordPhotos, getRecords, reviewRecord };
-module.exports = { createRecord, updateRecord, updateRecordPhotos, getRecords, reviewRecord };
+module.exports = { createRecord, updateRecord, updateRecordPhotos, getRecords, reviewRecord, getAwcChildrenCount };

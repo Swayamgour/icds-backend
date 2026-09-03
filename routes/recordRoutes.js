@@ -9,6 +9,7 @@ const {
   updateRecordPhotos,
   getRecords,
   reviewRecord,
+  getAwcChildrenCount
 } = require("../controllers/recordController");
 
 router.use(protect, buildScopeFilter);
@@ -19,6 +20,10 @@ router.use(protect, buildScopeFilter);
 // photoBeneficiariesNutrition), all uploaded straight to Cloudinary.
 // Photos are optional here - you can send none, some, or all 6 now and
 // add the rest later.
+
+router.get("/awc-children", getAwcChildrenCount);
+
+
 router.post("/", recordPhotoUpload, createRecord); // awc role only
 
 router.put("/:id", updateRecord);   // JSON body

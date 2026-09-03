@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema(
 
     isActive: { type: Boolean, default: true },
     status: { type: String, enum: ["accepted", "rejected"], default: "accepted" },
+    children3To6Y: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );

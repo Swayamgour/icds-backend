@@ -1,16 +1,54 @@
 const mongoose = require("mongoose");
-const { submissionFields, photoProofSchema } = require("./shared/submissionFields");
+const {
+  submissionFields,
+  photoProofSchema,
+} = require("./shared/submissionFields");
 
 const recordSchema = new mongoose.Schema(
   {
-    districtCode: { type: String, required: true, index: true },
-    blockCode: { type: String, required: true, index: true },
-    sectorCode: { type: String, required: true, index: true },
-    awcCode: { type: String, required: true, index: true },
+    // =====================================================
+    // LOCATION / SCOPE
+    // =====================================================
 
-    blockName: { type: String },
-    sectorName: { type: String },
-    awcName: { type: String },
+    districtCode: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    blockCode: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    sectorCode: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    awcCode: {
+      type: String,
+      required: true,
+      index: true,
+    },
+
+    blockName: {
+      type: String,
+    },
+
+    sectorName: {
+      type: String,
+    },
+
+    awcName: {
+      type: String,
+    },
+
+    // =====================================================
+    // DATE
+    // =====================================================
 
     date: {
       type: Date,
@@ -18,9 +56,23 @@ const recordSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    // =====================================================
+    // GENERAL INFORMATION
+    // =====================================================
+
+    // Total registered children (3-6 years)
     registeredChildrenCount: {
       type: Number,
       default: 0,
+      min: 0,
+    },
+
+    // NEW FIELD:
+    // Number of registered children who actually attended today
+    childrenAttendedCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
 
     centerOpen: {
@@ -35,10 +87,14 @@ const recordSchema = new mongoose.Schema(
       default: "present",
     },
 
-    // Morning
+    // =====================================================
+    // MORNING
+    // =====================================================
+
     morningMealChildrenCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     morningMenu: {
@@ -64,9 +120,13 @@ const recordSchema = new mongoose.Schema(
     milkPouchCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
-    // Afternoon
+    // =====================================================
+    // AFTERNOON
+    // =====================================================
+
     afternoonMealGiven: {
       type: Boolean,
       default: false,
@@ -75,6 +135,7 @@ const recordSchema = new mongoose.Schema(
     afternoonMealChildrenCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     afternoonMenu: {
@@ -90,7 +151,10 @@ const recordSchema = new mongoose.Schema(
       type: photoProofSchema,
     },
 
-    // Pre-education
+    // =====================================================
+    // PRE-EDUCATION
+    // =====================================================
+
     preEducationConducted: {
       type: Boolean,
       default: false,
@@ -99,13 +163,17 @@ const recordSchema = new mongoose.Schema(
     preEducationChildrenCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     preEducationPhoto: {
       type: photoProofSchema,
     },
 
-    // Poshan Sudha Yojana
+    // =====================================================
+    // POSHAN SUDHA YOJANA
+    // =====================================================
+
     poshanDishGiven: {
       type: Boolean,
       default: false,
@@ -124,22 +192,38 @@ const recordSchema = new mongoose.Schema(
     poshanSudhaCount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     photoBeneficiariesNutrition: {
       type: photoProofSchema,
     },
 
+    // =====================================================
+    // OTHER INFORMATION
+    // =====================================================
+
     qualityOfMeal: {
       type: String,
       enum: ["good", "average", "bad"],
+      default: "good",
     },
 
     remarks: {
       type: String,
+      default: "",
     },
 
+    // =====================================================
+    // SHARED SUBMISSION FIELDS
+    // GPS, status, review fields, photos etc.
+    // =====================================================
+
     ...submissionFields,
+
+    // =====================================================
+    // CREATED BY
+    // =====================================================
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -167,7 +251,4 @@ recordSchema.index(
   }
 );
 
-module.exports = mongoose.model(
-  "Record",
-  recordSchema
-);
+module.exports = mongoose.model("Record", recordSchema);

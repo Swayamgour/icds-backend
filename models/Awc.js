@@ -10,6 +10,11 @@ const awcSchema = new mongoose.Schema(
     name: { type: String, required: true },
     latitude: { type: Number },
     longitude: { type: Number },
+    children3To6Y: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   },
   { timestamps: true }
 );
