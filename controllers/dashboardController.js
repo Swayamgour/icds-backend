@@ -659,274 +659,373 @@ const getDashboard = async (req, res) => {
     // 8. RECORD AGGREGATION
     // =====================================================
 
-    const recordAgg =
-      await Record.aggregate([
-        {
-          $match: recordMatch,
+    const recordAgg = await Record.aggregate([
+      // =====================================================
+      // 1. APPLY HIERARCHY / DATE FILTER
+      // =====================================================
+      {
+        $match: recordMatch,
+      },
+
+      // =====================================================
+      // 2. LATEST RECORD FIRST
+      // =====================================================
+      {
+        $sort: {
+          awcCode: 1,
+          date: -1,
+          updatedAt: -1,
+          createdAt: -1,
         },
+      },
 
-        {
-          $group: {
-            _id: groupField,
+      // =====================================================
+      // 3. TAKE ONLY ONE (LATEST) RECORD PER AWC
+      // =====================================================
+      {
+        $group: {
+          _id: "$awcCode",
+          record: {
+            $first: "$$ROOT",
+          },
+        },
+      },
 
-            // =================================================
-            // AWC STATUS
-            // =================================================
+      // =====================================================
+      // 4. RESTORE RECORD DATA
+      // =====================================================
+      {
+        $replaceRoot: {
+          newRoot: "$record",
+        },
+      },
 
-            awcOpenYes: {
-              $sum: {
-                $cond: [
-                  "$centerOpen",
-                  1,
-                  0,
-                ],
-              },
+      // =====================================================
+      // 5. NOW GROUP BY DISTRICT / BLOCK / SECTOR / AWC
+      // =====================================================
+      {
+        $group: {
+          _id: groupField,
+
+          // =================================================
+          // AWC STATUS
+          // =================================================
+
+          awcOpenYes: {
+            $sum: {
+              $cond: [
+                { $eq: ["$centerOpen", true] },
+                1,
+                0,
+              ],
             },
+          },
 
-            awcOpenNo: {
-              $sum: {
-                $cond: [
-                  "$centerOpen",
-                  0,
-                  1,
-                ],
-              },
+          awcOpenNo: {
+            $sum: {
+              $cond: [
+                { $eq: ["$centerOpen", false] },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // MORNING
-            // =================================================
+          // =================================================
+          // MORNING
+          // =================================================
 
-            morningMealChildrenCount: {
-              $sum:
+          morningMealChildrenCount: {
+            $sum: {
+              $ifNull: [
                 "$morningMealChildrenCount",
+                0,
+              ],
             },
+          },
 
-            morningDishPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$morningDishPhoto",
-                  1,
-                  0,
-                ],
-              },
+          morningDishPhotoYes: {
+            $sum: {
+              $cond: [
+                {
+                  $ne: [
+                    { $ifNull: ["$morningDishPhoto", null] },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            morningDishPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$morningDishPhoto",
-                  0,
-                  1,
-                ],
-              },
+          morningDishPhotoNo: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    { $ifNull: ["$morningDishPhoto", null] },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            childrenEatingPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$childrenEatingBreakfastPhoto",
-                  1,
-                  0,
-                ],
-              },
+          childrenEatingPhotoYes: {
+            $sum: {
+              $cond: [
+                {
+                  $ne: [
+                    {
+                      $ifNull: [
+                        "$childrenEatingBreakfastPhoto",
+                        null,
+                      ],
+                    },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            childrenEatingPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$childrenEatingBreakfastPhoto",
-                  0,
-                  1,
-                ],
-              },
+          childrenEatingPhotoNo: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    {
+                      $ifNull: [
+                        "$childrenEatingBreakfastPhoto",
+                        null,
+                      ],
+                    },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // MILK SANJIVANI
-            // =================================================
+          // =================================================
+          // MILK SANJIVANI
+          // =================================================
 
-            milkPouchCount: {
-              $sum: "$milkPouchCount",
+          milkPouchCount: {
+            $sum: {
+              $ifNull: ["$milkPouchCount", 0],
             },
+          },
 
-            milkPouchPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$milkPouchGiven",
-                  1,
-                  0,
-                ],
-              },
+          milkPouchPhotoYes: {
+            $sum: {
+              $cond: [
+                { $eq: ["$milkPouchGiven", true] },
+                1,
+                0,
+              ],
             },
+          },
 
-            milkPouchPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$milkPouchGiven",
-                  0,
-                  1,
-                ],
-              },
+          milkPouchPhotoNo: {
+            $sum: {
+              $cond: [
+                { $eq: ["$milkPouchGiven", false] },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // AFTERNOON
-            // =================================================
+          // =================================================
+          // AFTERNOON
+          // =================================================
 
-            afternoonMealChildrenCount: {
-              $sum:
+          afternoonMealChildrenCount: {
+            $sum: {
+              $ifNull: [
                 "$afternoonMealChildrenCount",
+                0,
+              ],
             },
+          },
 
-            afternoonDishPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$afternoonDishPhoto",
-                  1,
-                  0,
-                ],
-              },
+          afternoonDishPhotoYes: {
+            $sum: {
+              $cond: [
+                {
+                  $ne: [
+                    { $ifNull: ["$afternoonDishPhoto", null] },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            afternoonDishPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$afternoonDishPhoto",
-                  0,
-                  1,
-                ],
-              },
+          afternoonDishPhotoNo: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    { $ifNull: ["$afternoonDishPhoto", null] },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            childrenEatingAfternoonPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$childrenEatingAfternoonPhoto",
-                  1,
-                  0,
-                ],
-              },
+          childrenEatingAfternoonPhotoYes: {
+            $sum: {
+              $cond: [
+                {
+                  $ne: [
+                    {
+                      $ifNull: [
+                        "$childrenEatingAfternoonPhoto",
+                        null,
+                      ],
+                    },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            childrenEatingAfternoonPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$childrenEatingAfternoonPhoto",
-                  0,
-                  1,
-                ],
-              },
+          childrenEatingAfternoonPhotoNo: {
+            $sum: {
+              $cond: [
+                {
+                  $eq: [
+                    {
+                      $ifNull: [
+                        "$childrenEatingAfternoonPhoto",
+                        null,
+                      ],
+                    },
+                    null,
+                  ],
+                },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // POSHAN SUDHA
-            // =================================================
+          // =================================================
+          // POSHAN SUDHA
+          // =================================================
 
-            poshanSudhaCount: {
-              $sum: "$poshanSudhaCount",
+          poshanSudhaCount: {
+            $sum: {
+              $ifNull: ["$poshanSudhaCount", 0],
             },
+          },
 
-            poshanBenefitPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$photoBeneficiariesNutrition",
-                  1,
-                  0,
-                ],
-              },
+          poshanBenefitPhotoYes: {
+            $sum: {
+              $cond: [
+                { $eq: ["$poshanBenefitGiven", true] },
+                1,
+                0,
+              ],
             },
+          },
 
-            poshanBenefitPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$photoBeneficiariesNutrition",
-                  0,
-                  1,
-                ],
-              },
+          poshanBenefitPhotoNo: {
+            $sum: {
+              $cond: [
+                { $eq: ["$poshanBenefitGiven", false] },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // PRE-PRIMARY EDUCATION
-            // =================================================
+          // =================================================
+          // PRE-PRIMARY EDUCATION
+          // =================================================
 
-            preEducationChildrenCount: {
-              $sum:
+          preEducationChildrenCount: {
+            $sum: {
+              $ifNull: [
                 "$preEducationChildrenCount",
+                0,
+              ],
             },
+          },
 
-            preEducationPhotoYes: {
-              $sum: {
-                $cond: [
-                  "$preEducationPhoto",
-                  1,
-                  0,
-                ],
-              },
+          preEducationPhotoYes: {
+            $sum: {
+              $cond: [
+                { $eq: ["$preEducationConducted", true] },
+                1,
+                0,
+              ],
             },
+          },
 
-            preEducationPhotoNo: {
-              $sum: {
-                $cond: [
-                  "$preEducationPhoto",
-                  0,
-                  1,
-                ],
-              },
+          preEducationPhotoNo: {
+            $sum: {
+              $cond: [
+                { $eq: ["$preEducationConducted", false] },
+                1,
+                0,
+              ],
             },
+          },
 
-            // =================================================
-            // MEAL QUALITY
-            // =================================================
+          // =================================================
+          // MEAL QUALITY
+          // =================================================
 
-            mealQualityGood: {
-              $sum: {
-                $cond: [
-                  {
-                    $eq: [
-                      "$qualityOfMeal",
-                      "good",
-                    ],
-                  },
-                  1,
-                  0,
-                ],
-              },
+          mealQualityGood: {
+            $sum: {
+              $cond: [
+                { $eq: ["$qualityOfMeal", "good"] },
+                1,
+                0,
+              ],
             },
+          },
 
-            mealQualityAverage: {
-              $sum: {
-                $cond: [
-                  {
-                    $eq: [
-                      "$qualityOfMeal",
-                      "average",
-                    ],
-                  },
-                  1,
-                  0,
-                ],
-              },
+          mealQualityAverage: {
+            $sum: {
+              $cond: [
+                { $eq: ["$qualityOfMeal", "average"] },
+                1,
+                0,
+              ],
             },
+          },
 
-            mealQualityBad: {
-              $sum: {
-                $cond: [
-                  {
-                    $eq: [
-                      "$qualityOfMeal",
-                      "bad",
-                    ],
-                  },
-                  1,
-                  0,
-                ],
-              },
+          mealQualityBad: {
+            $sum: {
+              $cond: [
+                { $eq: ["$qualityOfMeal", "bad"] },
+                1,
+                0,
+              ],
             },
           },
         },
-      ]);
+      },
+    ]);
 
     // =====================================================
     // 9. RECORD MAP
