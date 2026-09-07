@@ -44,31 +44,32 @@ const pickHierarchyScope = (scope) => {
 // DATE RANGE
 // ---------------------------------------------------------
 
+// ---------------------------------------------------------
+// DATE RANGE
+// ---------------------------------------------------------
+
 const buildDateMatch = (fromDate, toDate) => {
   const dateMatch = {};
 
-  if (hasValue(fromDate)) {
-    const from = new Date(fromDate);
+  // Validate YYYY-MM-DD format
+  const isValidDate = (date) => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(date);
+  };
 
-    if (Number.isNaN(from.getTime())) {
+  if (hasValue(fromDate)) {
+    if (!isValidDate(fromDate)) {
       throw new Error(`Invalid fromDate: ${fromDate}`);
     }
 
-    from.setHours(0, 0, 0, 0);
-
-    dateMatch.$gte = from;
+    dateMatch.$gte = fromDate;
   }
 
   if (hasValue(toDate)) {
-    const to = new Date(toDate);
-
-    if (Number.isNaN(to.getTime())) {
+    if (!isValidDate(toDate)) {
       throw new Error(`Invalid toDate: ${toDate}`);
     }
 
-    to.setHours(23, 59, 59, 999);
-
-    dateMatch.$lte = to;
+    dateMatch.$lte = toDate;
   }
 
   return dateMatch;
