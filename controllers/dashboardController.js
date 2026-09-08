@@ -1057,6 +1057,15 @@ const getDashboard = async (req, res) => {
       const record =
         recordMap[master.code] || {};
 
+      const totalAwc = totalAwcMap[master.code] || 0;
+
+      const awcOpenYes = record.awcOpenYes || 0;
+
+      const awcOpenNo = Math.max(
+        0,
+        totalAwc - awcOpenYes
+      );
+
       const row = {
         code: master.code,
         name: master.name,
@@ -1065,18 +1074,10 @@ const getDashboard = async (req, res) => {
         // AWC
         // ---------------------------------------------
 
-        totalAwc:
-          totalAwcMap[master.code] || 0,
+        totalAwc,
+        awcOpenYes,
+        awcOpenNo,
 
-        // ---------------------------------------------
-        // AWC OPEN
-        // ---------------------------------------------
-
-        awcOpenYes:
-          record.awcOpenYes || 0,
-
-        awcOpenNo:
-          record.awcOpenNo || 0,
 
         // ---------------------------------------------
         // MORNING
