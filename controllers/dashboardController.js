@@ -56,20 +56,30 @@ const buildDateMatch = (fromDate, toDate) => {
     return /^\d{4}-\d{2}-\d{2}$/.test(date);
   };
 
+  // ==============================
+  // FROM DATE
+  // ==============================
   if (hasValue(fromDate)) {
     if (!isValidDate(fromDate)) {
       throw new Error(`Invalid fromDate: ${fromDate}`);
     }
 
-    dateMatch.$gte = fromDate;
+    dateMatch.$gte = new Date(
+      `${fromDate}T00:00:00.000`
+    );
   }
 
+  // ==============================
+  // TO DATE
+  // ==============================
   if (hasValue(toDate)) {
     if (!isValidDate(toDate)) {
       throw new Error(`Invalid toDate: ${toDate}`);
     }
 
-    dateMatch.$lte = toDate;
+    dateMatch.$lte = new Date(
+      `${toDate}T23:59:59.999`
+    );
   }
 
   return dateMatch;
@@ -330,13 +340,13 @@ const getDashboard = async (req, res) => {
     // DATE FILTER
     // =====================================================
 
-    const dateMatch = buildDateMatch(
+    const createdAtMatch = buildDateMatch(
       req.query.fromDate,
       req.query.toDate
     );
 
-    if (Object.keys(dateMatch).length > 0) {
-      recordMatch.date = dateMatch;
+    if (Object.keys(createdAtMatch).length > 0) {
+      recordMatch.createdAt = createdAtMatch;
     }
 
     // =====================================================

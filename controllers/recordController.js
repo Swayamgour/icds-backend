@@ -1023,39 +1023,52 @@ const getRecords = async (req, res) => {
   try {
     const filter = { ...req.scopeFilter };
 
+    // ==============================
+    // STATUS FILTER
+    // ==============================
     if (req.query.status) {
       filter.status = req.query.status;
     }
 
+    // ==============================
+    // CREATED AT DATE FILTER
+    // ==============================
     if (req.query.fromDate || req.query.toDate) {
-      filter.date = {};
+      filter.createdAt = {};
 
       // ==============================
       // FROM DATE
       // ==============================
       if (req.query.fromDate) {
-        const fromDate = new Date(`${req.query.fromDate}T00:00:00.000`);
+        const fromDate = new Date(
+          `${req.query.fromDate}T00:00:00.000`
+        );
 
-        filter.date.$gte = fromDate;
+        filter.createdAt.$gte = fromDate;
       }
 
       // ==============================
       // TO DATE
       // ==============================
       if (req.query.toDate) {
-        const toDate = new Date(`${req.query.toDate}T23:59:59.999`);
+        const toDate = new Date(
+          `${req.query.toDate}T23:59:59.999`
+        );
 
-        filter.date.$lte = toDate;
+        filter.createdAt.$lte = toDate;
       }
     }
 
     console.log("QUERY:", req.query);
-    console.log("FINAL FILTER:", JSON.stringify(filter, null, 2));
+    console.log(
+      "FINAL FILTER:",
+      JSON.stringify(filter, null, 2)
+    );
 
     const records = await Record.find(filter)
       .populate("createdBy", "name")
       .populate("reviewedBy", "name")
-      .sort({ date: -1 })
+      .sort({ createdAt: -1 })
       .lean();
 
     const formattedRecords = records.map((record) => {
@@ -1112,7 +1125,6 @@ const getRecords = async (req, res) => {
       count: formattedRecords.length,
       records: formattedRecords,
     });
-
   } catch (err) {
     console.error("GET RECORDS ERROR:", err);
 
