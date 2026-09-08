@@ -81,27 +81,55 @@ const RECORD_COLUMNS = [
 // @access Private (any role)
 const exportRecordsExcel = async (req, res) => {
   try {
-    const records = await Record.find(dateFilterFromQuery(req)).sort({ date: -1 }).lean();
+    const filter = dateFilterFromQuery(req);
+
+    console.log("EXCEL QUERY:", req.query);
+    console.log("EXCEL FILTER:", filter);
+
+    const records = await Record.find(filter)
+      .sort({ createdAt: -1 })
+      .lean();
 
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Records");
+
     sheet.columns = RECORD_COLUMNS;
+
     sheet.getRow(1).font = { bold: true };
 
     records.forEach((r) => {
       sheet.addRow({
         ...r,
-        date: new Date(r.createdAt).toLocaleDateString("en-IN"),
+
+        // createdAt ki date Excel mein show hogi
+        date: r.createdAt
+          ? new Date(r.createdAt).toLocaleDateString("en-IN")
+          : "",
+
         centerOpen: r.centerOpen ? "Yes" : "No",
       });
     });
 
-    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", "attachment; filename=records-report.xlsx");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=records-report.xlsx"
+    );
+
     await workbook.xlsx.write(res);
     res.end();
+
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    console.error("EXPORT RECORDS EXCEL ERROR:", err);
+
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
 
