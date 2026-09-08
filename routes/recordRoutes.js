@@ -33,7 +33,9 @@ router.patch("/:id", updateRecord);
 // time (e.g. morning photo now, afternoon photo a few hours later) - as
 // long as the record is still "pending".
 router.patch("/:id/photos", recordPhotoUpload, updateRecordPhotos); // awc role, own record only
+
 router.get("/", getRecords); // auto-scoped, supports ?fromDate=&toDate=&status=
+
 router.patch("/:id/review", reviewRecord); // sector/block/district approve-reject
 
 module.exports = router;

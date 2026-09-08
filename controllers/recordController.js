@@ -1036,9 +1036,6 @@ const getRecords = async (req, res) => {
     if (req.query.fromDate || req.query.toDate) {
       filter.createdAt = {};
 
-      // ==============================
-      // FROM DATE
-      // ==============================
       if (req.query.fromDate) {
         const fromDate = new Date(
           `${req.query.fromDate}T00:00:00.000`
@@ -1047,9 +1044,6 @@ const getRecords = async (req, res) => {
         filter.createdAt.$gte = fromDate;
       }
 
-      // ==============================
-      // TO DATE
-      // ==============================
       if (req.query.toDate) {
         const toDate = new Date(
           `${req.query.toDate}T23:59:59.999`
@@ -1059,18 +1053,43 @@ const getRecords = async (req, res) => {
       }
     }
 
+    // ==============================
+    // PAGINATION
+    // ==============================
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+
+    const limit = Math.min(
+      Math.max(parseInt(req.query.limit) || 10, 1),
+      100
+    );
+
+    const skip = (page - 1) * limit;
+
     console.log("QUERY:", req.query);
     console.log(
       "FINAL FILTER:",
       JSON.stringify(filter, null, 2)
     );
 
+    // ==============================
+    // TOTAL RECORDS
+    // ==============================
+    const totalRecords = await Record.countDocuments(filter);
+
+    // ==============================
+    // GET PAGINATED RECORDS
+    // ==============================
     const records = await Record.find(filter)
       .populate("createdBy", "name")
       .populate("reviewedBy", "name")
       .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
+    // ==============================
+    // FORMAT PHOTOS
+    // ==============================
     const formattedRecords = records.map((record) => {
       const photos = [
         {
@@ -1120,10 +1139,26 @@ const getRecords = async (req, res) => {
       };
     });
 
+    // ==============================
+    // RESPONSE
+    // ==============================
     res.status(200).json({
       success: true,
+
+      // Current page records
       count: formattedRecords.length,
       records: formattedRecords,
+
+      // Pagination information
+      pagination: {
+        page,
+        limit,
+        totalRecords,
+        totalPages: Math.ceil(totalRecords / limit),
+
+        hasNextPage: page * limit < totalRecords,
+        hasPreviousPage: page > 1,
+      },
     });
   } catch (err) {
     console.error("GET RECORDS ERROR:", err);
