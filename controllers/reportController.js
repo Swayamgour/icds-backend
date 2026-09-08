@@ -91,7 +91,7 @@ const exportRecordsExcel = async (req, res) => {
     records.forEach((r) => {
       sheet.addRow({
         ...r,
-        date: new Date(r.date).toLocaleDateString("en-IN"),
+        date: new Date(r.createdAt).toLocaleDateString("en-IN"),
         centerOpen: r.centerOpen ? "Yes" : "No",
       });
     });
