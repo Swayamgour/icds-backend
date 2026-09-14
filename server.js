@@ -17,6 +17,7 @@ const gradeRoutes = require("./routes/gradeRoutes");
 const reportRoutes = require("./routes/reportRoutes");
 const noticeRoutes = require("./routes/noticeRoutes");
 
+
 connectDB();
 
 const app = express();
