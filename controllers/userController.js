@@ -35,7 +35,7 @@ const getUsers = async (req, res) => {
 //         from the creator's own account, never from the request body, so a
 //         Block user can never plant a user into a different block.
 // @route  POST /api/users
-// @access Private (district, block, sector)
+// @access Private (district, block, supervisor, sector)
 const createUser = async (req, res) => {
   try {
     if (req.user.role === ROLES.AWC) {
@@ -61,11 +61,14 @@ const createUser = async (req, res) => {
     // creator's own account; only codes strictly below the creator's level
     // (down to the target role) are taken from the request body.
     const resolvedBlockCode = creatorRank >= ROLE_ORDER.indexOf(ROLES.BLOCK) ? req.user.blockCode : blockCode;
-    const resolvedSectorCode = creatorRank >= ROLE_ORDER.indexOf(ROLES.SECTOR) ? req.user.sectorCode : sectorCode;
+    const resolvedSectorCode = creatorRank >= ROLE_ORDER.indexOf(ROLES.SUPERVISOR) ? req.user.sectorCode : sectorCode;
     const resolvedAwcCode = awcCode;
 
     if (role === ROLES.BLOCK && !resolvedBlockCode) {
       return res.status(400).json({ success: false, message: "blockCode is required for block role" });
+    }
+    if (role === ROLES.SUPERVISOR && (!resolvedBlockCode || !resolvedSectorCode)) {
+      return res.status(400).json({ success: false, message: "blockCode and sectorCode are required for supervisor role" });
     }
     if (role === ROLES.SECTOR && (!resolvedBlockCode || !resolvedSectorCode)) {
       return res.status(400).json({ success: false, message: "blockCode and sectorCode are required for sector role" });
@@ -77,6 +80,14 @@ const createUser = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(400).json({ success: false, message: "Email already registered" });
+    }
+
+    // Only ONE supervisor per sector
+    if (role === ROLES.SUPERVISOR) {
+      const supervisorExists = await User.findOne({ role: ROLES.SUPERVISOR, sectorCode: resolvedSectorCode });
+      if (supervisorExists) {
+        return res.status(400).json({ success: false, message: "This sector already has a supervisor" });
+      }
     }
 
     const user = await User.create({

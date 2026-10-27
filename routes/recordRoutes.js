@@ -17,7 +17,7 @@ router.use(protect, buildScopeFilter);
 // multipart/form-data: text fields + up to one file per photo slot
 // (morningDishPhoto, childrenEatingBreakfastPhoto, afternoonDishPhoto,
 // childrenEatingAfternoonPhoto, preEducationPhoto,
-// photoBeneficiariesNutrition), all uploaded straight to Cloudinary.
+// photoBeneficiariesNutrition), all saved into the uploads/ folder.
 // Photos are optional here - you can send none, some, or all 6 now and
 // add the rest later.
 

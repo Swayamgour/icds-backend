@@ -11,8 +11,8 @@ const RECORD_PHOTO_FIELDS = [
   "photoBeneficiariesNutrition",
 ];
 
-// Files are kept in memory here; recordController uploads each buffer to
-// Cloudinary (into a per-slot folder) before saving the record.
+// Files are received in memory here; recordController writes each one into
+// the uploads/ folder (file name prefixed with the slot name) before saving the record.
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {

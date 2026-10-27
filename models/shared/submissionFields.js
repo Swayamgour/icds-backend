@@ -1,11 +1,11 @@
 const mongoose = require("mongoose");
 
 // One photo captured on a phone - geo-tagged and timestamped automatically at upload time.
-// url/publicId come from Cloudinary (all photo uploads in this app go to Cloudinary).
+// url/publicId come from POST /api/upload (files are saved in the uploads/ folder).
 const photoProofSchema = new mongoose.Schema(
   {
-    url: { type: String, required: true }, // Cloudinary secure_url
-    publicId: { type: String }, // Cloudinary public_id (needed to delete/replace later)
+    url: { type: String, required: true }, // e.g. https://host/uploads/<file>
+    publicId: { type: String }, // file name inside uploads/ (needed to delete/replace later)
     latitude: { type: Number },
     longitude: { type: Number },
     capturedAt: { type: Date, default: Date.now },

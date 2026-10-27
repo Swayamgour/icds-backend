@@ -65,7 +65,7 @@ const getTasks = async (req, res) => {
   try {
     const { role, _id, blockCode, sectorCode, awcCode } = req.user;
 
-    const myScopeCode = { block: blockCode, sector: sectorCode, awc: awcCode }[role];
+    const myScopeCode = { block: blockCode, supervisor: sectorCode, sector: sectorCode, awc: awcCode }[role];
 
     const filter = {
       ...req.scopeFilter,

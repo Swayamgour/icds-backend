@@ -15,7 +15,7 @@ const taskSchema = new mongoose.Schema(
 
     // Assignment target - EITHER a single user OR a role+scope group, not both
     assignedToUser: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    assignedToRole: { type: String, enum: ["district", "block", "sector", "awc"] },
+    assignedToRole: { type: String, enum: ["district", "block", "supervisor", "sector", "awc"] },
     assignedToScopeCode: { type: String }, // blockCode/sectorCode/awcCode the group filter applies to
 
     assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },

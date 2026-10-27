@@ -26,7 +26,7 @@ router.get("/block", getBlocks);
 router.post("/sector", authorize(ROLES.DISTRICT, ROLES.BLOCK), createSector);
 router.get("/sector", getSectors);
 
-router.post("/awc", authorize(ROLES.DISTRICT, ROLES.BLOCK, ROLES.SECTOR), createAwc);
+router.post("/awc", authorize(ROLES.DISTRICT, ROLES.BLOCK, ROLES.SUPERVISOR, ROLES.SECTOR), createAwc);
 router.get("/awc", getAwcs);
 
 module.exports = router;

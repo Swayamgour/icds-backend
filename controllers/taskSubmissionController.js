@@ -1,14 +1,15 @@
 const TaskSubmission = require("../models/TaskSubmission");
 const Task = require("../models/Task");
-const { ROLES } = require("../config/roles");
+const User = require("../models/User");
+const { ROLES, ROLE_ORDER } = require("../config/roles");
 
 // @desc   Submit completion of an assigned task, with GPS check-in and photos[]
 // @route  POST /api/task-submissions
 // @access Private (sector, awc - field staff)
 const createTaskSubmission = async (req, res) => {
   try {
-    if (![ROLES.SECTOR, ROLES.AWC].includes(req.user.role)) {
-      return res.status(403).json({ success: false, message: "Only field staff (sector, awc) can submit task completion" });
+    if (![ROLES.SUPERVISOR, ROLES.SECTOR, ROLES.AWC].includes(req.user.role)) {
+      return res.status(403).json({ success: false, message: "Only field staff (supervisor, sector, awc) can submit task completion" });
     }
 
     const { taskId } = req.body;
@@ -21,7 +22,7 @@ const createTaskSubmission = async (req, res) => {
       return res.status(404).json({ success: false, message: "Task not found" });
     }
 
-    const myScopeCode = { sector: req.user.sectorCode, awc: req.user.awcCode }[req.user.role];
+    const myScopeCode = { supervisor: req.user.sectorCode, sector: req.user.sectorCode, awc: req.user.awcCode }[req.user.role];
     const isMine =
       String(task.assignedToUser) === String(req.user._id) ||
       (task.assignedToRole === req.user.role && task.assignedToScopeCode === myScopeCode);
@@ -91,9 +92,15 @@ const reviewTaskSubmission = async (req, res) => {
       return res.status(400).json({ success: false, message: "status must be 'approved' or 'rejected'" });
     }
 
-    const submission = await TaskSubmission.findOne({ _id: req.params.id, ...req.scopeFilter });
+    const submission = await TaskSubmission.findOne({ _id: req.params.id, ...req.scopeFilter })
     if (!submission) {
       return res.status(404).json({ success: false, message: "Submission not found in your scope" });
+    }
+
+    // Reviewer must outrank the submitter (e.g. supervisor reviews sector/awc, sector can't review supervisor)
+    const submitter = await User.findById(submission.submittedBy).select("role");
+    if (submitter && ROLE_ORDER.indexOf(req.user.role) >= ROLE_ORDER.indexOf(submitter.role)) {
+      return res.status(403).json({ success: false, message: "You can only review submissions from roles below your own" });
     }
 
     submission.status = status;

@@ -102,7 +102,7 @@ const recordSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Fixed photo slot - Cloudinary url + latitude + longitude + capturedAt.
+    // Fixed photo slot - uploads/ url + latitude + longitude + capturedAt.
     // Undefined/absent means no photo was captured for this record.
     morningDishPhoto: {
       type: photoProofSchema,

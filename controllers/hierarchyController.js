@@ -96,6 +96,12 @@ const createAwc = async (req, res) => {
     const sector = await Sector.findOne({ code: sectorCode });
     if (!sector) return res.status(404).json({ success: false, message: "Sector not found" });
 
+    // Block / supervisor / sector users can only add AWCs inside their own branch
+    const sf = req.scopeFilter;
+    if ((sf.blockCode && sf.blockCode !== sector.blockCode) || (sf.sectorCode && sf.sectorCode !== sector.code)) {
+      return res.status(403).json({ success: false, message: "This sector is outside your scope" });
+    }
+
     const awc = await Awc.create({
       code,
       name,

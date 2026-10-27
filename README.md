@@ -1,6 +1,6 @@
 # Field Workforce Monitoring Backend (Suposhit Dahod Program)
 
-District (Manager) → Block (CDPO) → Sector (Mukhya Sevika) → AWC (Worker)
+District (Manager) → Block (CDPO) → Supervisor (1 per sector) → Sector (Mukhya Sevika) → AWC (Worker)
 hierarchy, built to match the tender: GPS check-in, geo-tagged photo proof,
 task assignment, approve/reject workflow, an auto-grading engine, and
 Excel/PDF reports.
@@ -23,8 +23,9 @@ npm run dev                 # or: npm start
 ```
 District (PO/DDO)  -> "Manager"
    └── Block (CDPO)
-         └── Sector (MS/Supervisor)  -> "Mukhya Sevika"
-               └── AWC (Worker)
+         └── Supervisor            -> exactly 1 per sector (role: "supervisor")
+               └── Sector (MS)     -> "Mukhya Sevika"
+                     └── AWC (Worker)
 ```
 
 ## What each piece is for
@@ -75,8 +76,16 @@ Enforced everywhere by `req.scopeFilter` (`middleware/scopeFilter.js`):
 |----------|------|
 | district | Everything in the district; only role that can create users, delete users, generate district-wide grades |
 | block    | Its own block's sectors/awcs/records/visits/tasks/grades/users |
+| supervisor | Whole sector (one per sector): its awcs/records/MS visits/tasks/grades/users; reviews AWC records, MS visit logs, task submissions; creates sector/awc users; assigns tasks; generates grades |
 | sector   | Its own sector's awcs; submits Mukhya Sevika visits; reviews AWC records |
 | awc      | Only its own data; submits daily records; sees only its own grade |
+
+## Supervisor role
+
+- `role: "supervisor"`, exactly **one per sector** (unique DB index + friendly 400 error on a 2nd one).
+- Login with email, **or** with `supervisorCode` = `SUP` + sectorCode (e.g. `SUP244450101`) - separate from the sector (MS) login, which still uses the plain sectorCode.
+- Create one: `POST /api/users` as district/block - `{ name, email, password, role: "supervisor", sectorCode, blockCode? }`.
+- Rank order is `district > block > supervisor > sector > awc` (`config/roles.js`), so a supervisor can create/assign tasks to/review sector (MS) and AWC users, and only block/district can review the supervisor's own task submissions.
 
 ## API Endpoints
 
@@ -94,7 +103,7 @@ All private routes need header: `Authorization: Bearer <token>`
 - `POST/GET /api/hierarchy/awc` (create: district/block/sector)
 
 ### Photo upload
-- `POST /api/upload` — multipart form-data, field name `photos` (up to 10 files, JPEG/PNG/WEBP, 8MB each) → `{ files: [{ url, originalName, size }] }`. Attach the returned `url`s (with your own lat/lng) into a submission's `photos[]` array.
+- `POST /api/upload` — multipart form-data, field name `photos` (up to 10 files, JPEG/PNG/WEBP, 8MB each) → `{ files: [{ url, publicId, originalName, size }] }`. Files are saved inside the project's `uploads/` folder (no Cloudinary) and served at `<host>/uploads/<filename>`; set `BASE_URL` in `.env` if the public host differs from the request host. Attach the returned `url`s (with your own lat/lng) into a submission's `photos[]` array.
 
 ### Records — Worker Detail Entry
 - `POST /api/records` (awc only) — `{ date, registeredChildrenCount, centerOpen, morningMealChildrenCount, morningDishPhoto, childrenEatingBreakfastPhoto, milkPouchGiven, milkPouchCount, afternoonMealGiven, afternoonMealChildrenCount, preEducationConducted, preEducationChildrenCount, poshanDishGiven, poshanBenefitGiven, photoBeneficiariesNutrition, qualityOfMeal, remarks, checkInLatitude, checkInLongitude, photos: [{url, latitude, longitude}] }`
@@ -105,6 +114,18 @@ All private routes need header: `Authorization: Bearer <token>`
 - `POST /api/mukhya-sevika` (sector only) — `{ awcCode, date, registeredChildrenCount, arrivalTime, checkInLatitude, checkInLongitude, photos }`
 - `GET /api/mukhya-sevika?fromDate=&toDate=&status=` — district/block/sector
 - `PATCH /api/mukhya-sevika/:id/review` (block/district) — `{ status, remarks }`
+
+### Supervisor Visit - inspection form (Supervisor role)
+Supervisor can visit **any AWC in her own sector** and fill the 4-section form
+(General, Section A, Section B, Section C). Each section is saved on its own and
+shows Completed + submitted time; once all 4 are completed the visit becomes `submitted`.
+- `GET /api/supervisor-visits/prefill/:awcCode` (supervisor) - AWC name + registered children for pre-filling
+- `POST /api/supervisor-visits` (supervisor) - `{ awcCode, date?, checkInLatitude?, checkInLongitude? }` starts a visit (returns the existing draft if one is already open for that AWC today)
+- `PUT /api/supervisor-visits/:id/sections/:section` (the supervisor who started it) - `section` = `general | a | b | c`, body = that section's fields (see `models/SupervisorVisit.js`). `"markComplete": false` saves progress without marking it Completed. Photos: upload via `POST /api/upload` first, then send `{ url, publicId, latitude, longitude }`.
+- `GET /api/supervisor-visits?awcCode=&status=&formStatus=&fromDate=&toDate=&full=true` - auto-scoped (block/district/sector see submitted visits)
+- `GET /api/supervisor-visits/:id`
+- `PATCH /api/supervisor-visits/:id/review` (block/district) - `{ status: "approved"|"rejected", remarks }`; a rejected visit can be corrected by the supervisor and goes back to pending
+- `DELETE /api/supervisor-visits/:id` (supervisor, drafts only)
 
 ### Tasks
 - `POST /api/tasks` (district/block/sector) — `{ title, description, dueDate, assignedToUser? , assignedToRole?, assignedToScopeCode? }` — assign to one user OR a whole role+scope group
@@ -148,6 +169,7 @@ password `Password@123`):
 ```
 district -> district@dahod-demo.local
 block    -> block@dahod-demo.local
+supervisor -> supervisor-<sectorCode>@dahod-demo.local  (or login code SUP<sectorCode>)
 sector   -> sector@dahod-demo.local
 awc      -> awc@dahod-demo.local
 ```
@@ -165,12 +187,12 @@ icds-backend/
 │                    upload, task, taskSubmission, grade, report, notice
 ├── middleware/       auth.js, scopeFilter.js, upload.js (multer)
 ├── models/          User, District, Block, Sector, Awc, Record,
-│                    MukhyaSevikaEntry, Task, TaskSubmission, Grade, Notice,
+│                    MukhyaSevikaEntry, SupervisorVisit, Task, TaskSubmission, Grade, Notice,
 │                    shared/submissionFields.js (GPS + photo + approval, reused)
 ├── routes/          one file per resource above
 ├── data/            dahodAwcData.json (seed source)
 ├── seed/            seed.js
-├── uploads/          photo files land here, served at /uploads/<filename>
+├── uploads/          every uploaded photo is saved here, served at /uploads/<filename>
 ├── utils/           generateToken.js
 └── server.js
 ```

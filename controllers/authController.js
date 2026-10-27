@@ -29,6 +29,9 @@ const registerUser = async (req, res) => {
     if (role === ROLES.BLOCK && !blockCode) {
       return res.status(400).json({ success: false, message: "blockCode is required for block role" });
     }
+    if (role === ROLES.SUPERVISOR && (!blockCode || !sectorCode)) {
+      return res.status(400).json({ success: false, message: "blockCode and sectorCode are required for supervisor role" });
+    }
     if (role === ROLES.SECTOR && (!blockCode || !sectorCode)) {
       return res.status(400).json({ success: false, message: "blockCode and sectorCode are required for sector role" });
     }
@@ -39,6 +42,14 @@ const registerUser = async (req, res) => {
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(400).json({ success: false, message: "Email already registered" });
+    }
+
+    // Only ONE supervisor per sector
+    if (role === ROLES.SUPERVISOR) {
+      const supervisorExists = await User.findOne({ role: ROLES.SUPERVISOR, sectorCode });
+      if (supervisorExists) {
+        return res.status(400).json({ success: false, message: "This sector already has a supervisor" });
+      }
     }
 
     const user = await User.create({
@@ -66,7 +77,7 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { login, password } = req.body;
-    console.log("STEP 1 - Request body:", req.body);
+    console.log("STEP 1 - Request body:", { ...req.body, password: "***" });
 
     if (!login || !password) {
       console.log("STEP 1 FAIL - login or password missing");
@@ -83,6 +94,7 @@ const loginUser = async (req, res) => {
         { email: login },
         { role: "district", districtCode: login },
         { role: "block", blockCode: login },
+        { role: "supervisor", supervisorCode: login }, // e.g. SUP244450101
         { role: "sector", sectorCode: login },
         { role: "awc", awcCode: login },
       ],
@@ -100,6 +112,7 @@ const loginUser = async (req, res) => {
         districtCode: user.districtCode,
         blockCode: user.blockCode,
         sectorCode: user.sectorCode,
+        supervisorCode: user.supervisorCode,
         awcCode: user.awcCode,
         isActive: user.isActive,
       });

@@ -18,8 +18,12 @@ const userSchema = new mongoose.Schema(
     // A user only needs the code(s) up to and including their own level.
     districtCode: { type: String, required: true },
     blockCode: { type: String }, // required for block, sector, awc
-    sectorCode: { type: String }, // required for sector, awc
+    sectorCode: { type: String }, // required for supervisor, sector, awc
     awcCode: { type: String }, // required for awc
+
+    // Supervisor-only login code (auto-generated as "SUP" + sectorCode).
+    // Separate from sectorCode because the sector (MS) user already logs in with sectorCode.
+    supervisorCode: { type: String },
 
     isActive: { type: Boolean, default: true },
     status: { type: String, enum: ["accepted", "rejected"], default: "accepted" },
@@ -31,6 +35,24 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Exactly ONE supervisor per sector - enforced at the database level
+userSchema.index(
+  { sectorCode: 1 },
+  { unique: true, partialFilterExpression: { role: ROLES.SUPERVISOR } }
+);
+userSchema.index(
+  { supervisorCode: 1 },
+  { unique: true, partialFilterExpression: { role: ROLES.SUPERVISOR } }
+);
+
+// Auto-generate the supervisor login code from the sector code
+userSchema.pre("validate", function (next) {
+  if (this.role === ROLES.SUPERVISOR && this.sectorCode && !this.supervisorCode) {
+    this.supervisorCode = `SUP${this.sectorCode}`;
+  }
+  next();
+});
 
 // Hash password before save
 userSchema.pre("save", async function (next) {

@@ -1,8 +1,8 @@
 const multer = require("multer");
 
-// Files are kept in memory (never written to local disk) and uploaded to
-// Cloudinary by the controller. Used by POST /api/upload (generic single/
-// multi photo upload used by MukhyaSevikaEntry / TaskSubmission flows).
+// Files are received in memory and written into the uploads/ folder by the
+// controller (utils/localUpload.js). Used by POST /api/upload (generic single/
+// multi photo upload used by MukhyaSevikaEntry / TaskSubmission / SupervisorVisit flows).
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {

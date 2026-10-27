@@ -78,11 +78,11 @@ const getMukhyaSevikaEntries = async (req, res) => {
 
 // @desc   Approve or reject a supervisor's visit entry
 // @route  PATCH /api/mukhya-sevika/:id/review
-// @access Private (block, district only)
+// @access Private (supervisor, block, district)
 const reviewMukhyaSevikaEntry = async (req, res) => {
   try {
     if (req.user.role === ROLES.AWC || req.user.role === ROLES.SECTOR) {
-      return res.status(403).json({ success: false, message: "Only block/district can review Mukhya Sevika entries" });
+      return res.status(403).json({ success: false, message: "Only district/block/supervisor can review Mukhya Sevika entries" });
     }
 
     const { status, remarks } = req.body;

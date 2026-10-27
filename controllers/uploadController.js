@@ -1,9 +1,10 @@
-const { uploadBufferToCloudinary } = require("../utils/cloudinaryUpload");
+const { saveUpload } = require("../utils/localUpload");
 
-// @desc   Upload one or more photos (form-data field name: "photos") straight
-//         to Cloudinary. Client then attaches GPS lat/lng + capturedAt
+// @desc   Upload one or more photos (form-data field name: "photos"). Files
+//         are saved inside the project's uploads/ folder and served at
+//         /uploads/<filename>. Client then attaches GPS lat/lng + capturedAt
 //         alongside each returned url when submitting a Record /
-//         MukhyaSevikaEntry / TaskSubmission.
+//         MukhyaSevikaEntry / TaskSubmission / SupervisorVisit.
 // @route  POST /api/upload
 // @access Private (any role)
 const uploadPhotos = async (req, res) => {
@@ -12,18 +13,11 @@ const uploadPhotos = async (req, res) => {
       return res.status(400).json({ success: false, message: "No files uploaded" });
     }
 
-    const results = await Promise.all(
-      req.files.map((f) =>
-        uploadBufferToCloudinary(f.buffer, {
-          folder: "icds/uploads",
-          publicId: `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-        })
-      )
-    );
+    const results = await Promise.all(req.files.map((f) => saveUpload(req, f)));
 
     const files = results.map((r, i) => ({
-      url: r.secure_url,
-      publicId: r.public_id,
+      url: r.url,
+      publicId: r.publicId,
       originalName: req.files[i].originalname,
       size: req.files[i].size,
     }));

@@ -254,6 +254,25 @@ const seed = async () => {
     }
 
     // ==============================================
+    // SUPERVISOR USERS (exactly 1 per sector)
+    // ==============================================
+
+    for (const s of sectorMap.values()) {
+      users.push({
+        name: `Supervisor - ${s.name}`,
+        email: `supervisor-${slugify(s.code)}@dahod-demo.local`,
+        password: passwordHash,
+
+        role: "supervisor",
+
+        districtCode: DISTRICT_CODE,
+        blockCode: s.blockCode,
+        sectorCode: s.code,
+        supervisorCode: `SUP${s.code}`, // login code
+      });
+    }
+
+    // ==============================================
     // AWC USERS
     // ==============================================
 
@@ -426,6 +445,7 @@ const seed = async () => {
     console.log(`  password: ${DEFAULT_PASSWORD} `);
     console.log(`  district: ${counts.district} `);
     console.log(`  block: ${counts.block} `);
+    console.log(`  supervisor: ${counts.supervisor} `);
     console.log(`  sector: ${counts.sector} `);
     console.log(`  awc: ${counts.awc} `);
     console.log(`  total: ${users.length} `);
@@ -441,6 +461,7 @@ const seed = async () => {
         blockDocs[0].code
       )
       } @dahod-demo.local\n` +
+      `  supervisor-${slugify(sectorDocs[0].code)}@dahod-demo.local (or code SUP${sectorDocs[0].code})\n` +
       `  sector - ${slugify(
         sectorDocs[0].code
       )

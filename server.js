@@ -3,11 +3,13 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const connectDB = require("./config/db");
+const { UPLOAD_DIR } = require("./utils/localUpload");
 
 const authRoutes = require("./routes/authRoutes");
 const hierarchyRoutes = require("./routes/hierarchyRoutes");
 const recordRoutes = require("./routes/recordRoutes");
 const mukhyaSevikaRoutes = require("./routes/mukhyaSevikaRoutes");
+const supervisorVisitRoutes = require("./routes/supervisorVisitRoutes");
 const dashboardRoutes = require("./routes/dashboardRoutes");
 const userRoutes = require("./routes/userRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
@@ -21,12 +23,13 @@ const noticeRoutes = require("./routes/noticeRoutes");
 connectDB();
 
 const app = express();
+app.set("trust proxy", 1); // behind nginx/etc. so req.protocol is https (used to build /uploads URLs)
 app.use(cors());
 app.use(express.json());
 
 
 // Uploaded photos are served statically from here (URLs returned by POST /api/upload)
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.get("/", (req, res) => {
   res.send("Field Workforce Monitoring API is running");
@@ -36,6 +39,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/hierarchy", hierarchyRoutes);
 app.use("/api/records", recordRoutes);
 app.use("/api/mukhya-sevika", mukhyaSevikaRoutes);
+app.use("/api/supervisor-visits", supervisorVisitRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/upload", uploadRoutes);

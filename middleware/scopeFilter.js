@@ -6,6 +6,7 @@ const { ROLES } = require("../config/roles");
  *
  *   district -> sees everything under districtCode           (all blocks/sectors/awcs)
  *   block    -> sees everything under blockCode              (own block's sectors/awcs)
+ *   supervisor -> sees everything under sectorCode            (own sector, all its users/awcs)
  *   sector   -> sees everything under sectorCode              (own sector's awcs)
  *   awc      -> sees only its own awcCode                     (own data only)
  *
@@ -24,6 +25,7 @@ const buildScopeFilter = (req, res, next) => {
     case ROLES.BLOCK:
       filter = { districtCode, blockCode };
       break;
+    case ROLES.SUPERVISOR: // 1 supervisor per sector -> sees its whole sector
     case ROLES.SECTOR:
       filter = { districtCode, blockCode, sectorCode };
       break;

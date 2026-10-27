@@ -4,10 +4,10 @@ const Block = require("../models/Block");
 const Sector = require("../models/Sector");
 const { ROLES } = require("../config/roles");
 const { RECORD_PHOTO_FIELDS } = require("../middleware/recordPhotoUpload");
-const { uploadBufferToCloudinary } = require("../utils/cloudinaryUpload");
+const { saveUpload } = require("../utils/localUpload");
 
-// Uploads every photo that came in via recordPhotoUpload (in-memory buffers)
-// to Cloudinary, and builds the 6 fixed-slot photo objects (url + publicId +
+// Saves every photo that came in via recordPhotoUpload (in-memory buffers)
+// into the uploads/ folder, and builds the 6 fixed-slot photo objects (url + publicId +
 // lat + lng + capturedAt), falling back to the record-level GPS check-in for
 // lat/lng when the client didn't send a per-photo location.
 async function buildPhotoFields(req) {
@@ -22,18 +22,15 @@ async function buildPhotoFields(req) {
       const file = files[fieldName]?.[0];
       if (!file) return;
 
-      const result = await uploadBufferToCloudinary(file.buffer, {
-        folder: `icds/records/${fieldName}`,
-        publicId: `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      });
+      const result = await saveUpload(req, file, { prefix: fieldName });
 
       const lat = req.body[`${fieldName}Lat`] ?? fallbackLat;
       const lng = req.body[`${fieldName}Lng`] ?? fallbackLng;
       const capturedAt = req.body[`${fieldName}CapturedAt`];
 
       photoFields[fieldName] = {
-        url: result.secure_url,
-        publicId: result.public_id,
+        url: result.url,
+        publicId: result.publicId,
         latitude: lat !== undefined ? Number(lat) : undefined,
         longitude: lng !== undefined ? Number(lng) : undefined,
         capturedAt: capturedAt ? new Date(capturedAt) : new Date(),
@@ -46,13 +43,10 @@ async function buildPhotoFields(req) {
   const extraFiles = files.photos || [];
   const extraPhotos = await Promise.all(
     extraFiles.map(async (file) => {
-      const result = await uploadBufferToCloudinary(file.buffer, {
-        folder: "icds/records/extra",
-        publicId: `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-      });
+      const result = await saveUpload(req, file, { prefix: "extra" });
       return {
-        url: result.secure_url,
-        publicId: result.public_id,
+        url: result.url,
+        publicId: result.publicId,
         latitude: fallbackLat !== undefined ? Number(fallbackLat) : undefined,
         longitude: fallbackLng !== undefined ? Number(fallbackLng) : undefined,
         capturedAt: new Date(),
@@ -63,7 +57,7 @@ async function buildPhotoFields(req) {
   return { photoFields, extraPhotos };
 }
 
-// The frontend (PhotoGpsCapture) uploads each photo straight to Cloudinary
+// The frontend (PhotoGpsCapture) uploads each photo first via POST /api/upload
 // the moment it's taken, then submits the record with the resulting
 // { url, latitude, longitude, capturedAt } object already sitting on each
 // of the 6 named fields (morningDishPhoto, etc.) - as plain JSON, not a
@@ -98,7 +92,7 @@ function extractTrustedPhotoFields(body, fallbackLat, fallbackLng) {
 
     trustedPhotoFields[fieldName] = {
       url: val.url,
-      publicId: val.publicId, // present if it was uploaded via cloudinaryUpload client-side helper
+      publicId: val.publicId, // file name inside uploads/ (returned by POST /api/upload)
       latitude: lat !== undefined && lat !== null && lat !== "" ? Number(lat) : undefined,
       longitude: lng !== undefined && lng !== null && lng !== "" ? Number(lng) : undefined,
       capturedAt: val.capturedAt ? new Date(val.capturedAt) : new Date(),
@@ -429,7 +423,7 @@ const createRecord = async (req, res) => {
     // -----------------------------------------------------
     // IMPORTANT:
     // Pull out any already-uploaded photo objects the frontend sent as
-    // JSON (PhotoGpsCapture uploads to Cloudinary client-side and sends
+    // JSON (PhotoGpsCapture uploads via POST /api/upload first and sends
     // back { url, latitude, longitude, capturedAt } on each of the 6
     // named fields) BEFORE we strip those fields off recordData.
     //
@@ -891,7 +885,7 @@ const updateRecord = async (req, res) => {
     // 6. TRUSTED JSON PHOTO OBJECTS
     // =====================================================
     //
-    // PhotoGpsCapture uploads to Cloudinary client-side and sends back
+    // PhotoGpsCapture uploads via POST /api/upload first and sends back
     // { url, latitude, longitude, capturedAt } on each of the 6 named
     // photo fields - a real, already-hosted photo, not a raw file. Editing
     // a record (e.g. adding a photo that was missing at first submission)
