@@ -102,6 +102,13 @@ All private routes need header: `Authorization: Bearer <token>`
 - `POST/GET /api/hierarchy/sector` (create: district/block)
 - `POST/GET /api/hierarchy/awc` (create: district/block/sector)
 
+### Adding the real supervisors (Mukhya Sevika list)
+`seed/supervisorData.json` holds the 122 supervisors from `MS_Details.xlsx` (one per sector, 21 blocks).
+- `npm run seed:supervisors` - adds them (role `supervisor`, login `SUP<sectorCode>` or email). Does **not** wipe anything; run `npm run seed` first only if the hierarchy is empty.
+- `npm run seed:supervisors -- --dry-run` - preview only. `-- --role=sector` adds them as the MS (`sector`) role instead. `-- --reset-passwords` re-issues passwords.
+- Every supervisor gets the default password `pass1234` (login `SUP<sectorCode>`, e.g. `SUP244450105`). Set `SUPERVISOR_DEFAULT_PASSWORD` in `.env` to change it, or use `-- --random-passwords` for a different password each. The login list is written to `seed/supervisor-credentials.csv` (delete it after sharing).
+- A demo supervisor made by `npm run seed` for the same sector is replaced; manually created supervisors are never overwritten. `npm run seed` later skips sectors that already have a real supervisor.
+
 ### Photo upload
 - `POST /api/upload` — multipart form-data, field name `photos` (up to 10 files, JPEG/PNG/WEBP, 8MB each) → `{ files: [{ url, publicId, originalName, size }] }`. Files are saved inside the project's `uploads/` folder (no Cloudinary) and served at `<host>/uploads/<filename>`; set `BASE_URL` in `.env` if the public host differs from the request host. Attach the returned `url`s (with your own lat/lng) into a submission's `photos[]` array.
 
@@ -137,10 +144,28 @@ shows Completed + submitted time; once all 4 are completed the visit becomes `su
 - `GET /api/task-submissions?taskId=&status=` — auto-scoped
 - `PATCH /api/task-submissions/:id/review` (district/block/sector) — `{ status, remarks }`
 
-### Grades — performance grading engine
-- `POST /api/grades/generate` (district/block/sector) — `{ period: "YYYY-MM" }` — computes/refreshes grades for every AWC worker in scope
-- `GET /api/grades?period=YYYY-MM` — auto-scoped; awc sees only its own grade
-- `PATCH /api/grades/:id` (district/block/sector) — manually override any sub-score or add `supervisorRemarks`; recomputes the weighted total
+### Grades — AWC performance, grade & district ranking
+All routes need a token and are limited to the caller's scope (`req.scopeFilter`). Nothing is stored by hand:
+every score is computed from real `Record`, `Task`/`TaskSubmission` and `SupervisorVisit` data.
+
+- `GET /api/grades/ranking?period=YYYY-MM` — (district/block/supervisor/sector). Ranks **every AWC in the caller's scope together** (a district user gets all sectors of the district; sector is NOT required).
+  Optional filters, freely combinable: `sectorCode`, `blockCode`, `grade` (`A+`,`A`,`B+`,`B`,`C`,`D`; send `A%2B` for `A+`), `search` (AWC name or code), `page` (default 1), `limit` (default 50, max 200), `districtCode` (must equal your own).
+  Custom range instead of a month: `fromDate=YYYY-MM-DD&toDate=YYYY-MM-DD` (max 366 days). With neither, the current IST month is used.
+  Response `data`: `period, periodType, scope, filters, summary { totalAWCs, totalRegisteredAWCs, awcsWithoutSubmissions, averageScore, aPlus, a, bPlus, b, c, d }, gradeDistribution { "A+":n, ... }, ranking[], pagination { page, limit, total, totalPages }`.
+  Each ranking row: `rank` (position inside the sector/block being viewed, else the whole scope; **global across pages**), `overallRank` (position in the caller's whole scope), `awcCode, awcName, blockCode, blockName, sectorCode, sectorName, score, grade, metrics, metricsUsed, counts`.
+- `GET /api/grades/top?period=YYYY-MM&limit=10` — top N of the same ranking (same filters).
+- `GET /api/grades/awc/:awcCode?months=6&to=YYYY-MM` — month-by-month score, grade, **district rank**, metrics (newest first). `&stored=true` reads saved snapshots instead of computing live. An `awc` user can only open their own centre.
+- `POST /api/grades/recalculate` (alias `POST /api/grades/generate`) — `{ period: "YYYY-MM" }` stores/refreshes the `Grade` snapshot + ranks for the whole district, or `{ period, awcCode }` for one AWC (its rank change is propagated to the others). Run it from a nightly job if you want stored history; live endpoints never need it.
+- `GET /api/grades?period=YYYY-MM` — same as `/ranking`.
+
+**Score (0–100)** = weighted average of five metrics (weights in `config/gradeConfig.js`):
+Entry completion 30 (days with an entry ÷ expected working days, Sundays excluded, IST) · Entry quality 25 (approved ÷ approved+rejected) · Beneficiaries 20 (children attended ÷ registered on days the centre was open) · Tasks 15 (assigned tasks with an *approved* submission) · Inspection 10 (submitted, non-rejected supervisor visits where the centre was found open).
+A metric that does not apply to an AWC that month (no task assigned, nothing reviewed yet, no inspection) is left out and the other weights are re-normalised, so it is never punished with a fake 0.
+**Grade**: 90+ A+ · 80+ A · 70+ B+ · 60+ B · 50+ C · below 50 D (`calculateGrade` in `services/gradeService.js`).
+**Rank**: score, then approval rate, completion, task completion, inspection (all high→low), then AWC code — so the order never changes between requests.
+AWCs with no entry in the period are not scored or ranked; they are counted in `awcsWithoutSubmissions`.
+
+Tests: `npm test` (needs a MongoDB on `mongodb://127.0.0.1:27017`, override with `GRADE_TEST_MONGO_URI`; set `GRADE_TEST_REAL_MONGO=1` when it is a real `mongod`, otherwise aggregation pipelines are evaluated with `mingo`).
 
 ### Notices — autogenerated
 - `GET /api/notices?acknowledged=true|false` — auto-scoped; awc/sector see only their own
@@ -185,6 +210,8 @@ icds-backend/
 ├── config/          db.js, roles.js
 ├── controllers/     auth, hierarchy, record, mukhyaSevika, dashboard, user,
 │                    upload, task, taskSubmission, grade, report, notice
+├── services/        gradeService.js (scoring/grade/ranking/recalculation), gradeRepository.js (aggregations)
+├── tests/           grade.test.js (+ support/)
 ├── middleware/       auth.js, scopeFilter.js, upload.js (multer)
 ├── models/          User, District, Block, Sector, Awc, Record,
 │                    MukhyaSevikaEntry, SupervisorVisit, Task, TaskSubmission, Grade, Notice,

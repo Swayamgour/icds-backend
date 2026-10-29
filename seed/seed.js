@@ -234,7 +234,13 @@ const seed = async () => {
     // SECTOR USERS
     // ==============================================
 
+    // Sectors whose real supervisors/MS were already added with `npm run seed:supervisors`
+    // keep them - no demo account is created there (a sector may only have ONE supervisor).
+    const realSupervisorSectors = new Set(await User.find({ role: "supervisor" }).distinct("sectorCode"));
+    const realSectorSectors = new Set(await User.find({ role: "sector" }).distinct("sectorCode"));
+
     for (const s of sectorMap.values()) {
+      if (realSectorSectors.has(s.code)) continue;
       users.push({
         name: `Sector Supervisor - ${s.name} `,
 
@@ -258,6 +264,7 @@ const seed = async () => {
     // ==============================================
 
     for (const s of sectorMap.values()) {
+      if (realSupervisorSectors.has(s.code)) continue;
       users.push({
         name: `Supervisor - ${s.name}`,
         email: `supervisor-${slugify(s.code)}@dahod-demo.local`,

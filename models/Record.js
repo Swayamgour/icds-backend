@@ -251,4 +251,7 @@ recordSchema.index(
   }
 );
 
+// Period queries for grading/ranking: one district, one date range, grouped by AWC.
+recordSchema.index({ districtCode: 1, date: 1 }, { name: "district_date" });
+
 module.exports = mongoose.model("Record", recordSchema);

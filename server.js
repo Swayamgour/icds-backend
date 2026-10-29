@@ -32,7 +32,7 @@ app.use(express.json());
 app.use("/uploads", express.static(UPLOAD_DIR));
 
 app.get("/", (req, res) => {
-  res.send("Field Workforce Monitoring API is running");
+  res.send("Field Workforce Monitoring API is running 29/10/2026");
 });
 
 app.use("/api/auth", authRoutes);

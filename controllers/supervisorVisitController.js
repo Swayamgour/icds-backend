@@ -231,221 +231,30 @@ const saveSection = async (req, res) => {
 // @access Private (district, block, supervisor, sector)
 const getVisits = async (req, res) => {
   try {
-    // AWC role is not allowed to access supervisor visits
     if (req.user.role === ROLES.AWC) {
-      return res.status(403).json({
-        success: false,
-        message: "AWC role does not have access to supervisor visits",
-      });
+      return res.status(403).json({ success: false, message: "AWC role does not have access to supervisor visits" });
     }
 
-    // -----------------------------------------
-    // Build scope + query filters
-    // -----------------------------------------
     const filter = { ...req.scopeFilter };
-
-    if (req.query.awcCode) {
-      filter.awcCode = req.query.awcCode;
-    }
-
-    if (req.query.status) {
-      filter.status = req.query.status;
-    }
-
-    if (req.query.formStatus) {
-      filter.formStatus = req.query.formStatus;
-    }
-
+    if (req.query.awcCode) filter.awcCode = req.query.awcCode;
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.formStatus) filter.formStatus = req.query.formStatus;
     if (req.query.fromDate || req.query.toDate) {
       filter.date = {};
-
-      if (req.query.fromDate) {
-        filter.date.$gte = new Date(req.query.fromDate);
-      }
-
-      if (req.query.toDate) {
-        filter.date.$lte = new Date(req.query.toDate);
-      }
+      if (req.query.fromDate) filter.date.$gte = new Date(req.query.fromDate);
+      if (req.query.toDate) filter.date.$lte = new Date(req.query.toDate);
     }
 
-    // -----------------------------------------
-    // Non-supervisor users only see submitted
-    // visits unless formStatus is explicitly given
-    // -----------------------------------------
-    if (
-      req.user.role !== ROLES.SUPERVISOR &&
-      !req.query.formStatus
-    ) {
-      filter.formStatus = "submitted";
-    }
+    // block/district/sector only ever see finished visits; supervisor also sees own drafts
+    if (req.user.role !== ROLES.SUPERVISOR && !req.query.formStatus) filter.formStatus = "submitted";
 
-    // -----------------------------------------
-    // Full mode
-    //
-    // GET /api/supervisor-visits?full=true
-    //
-    // Returns complete visit including all sections
-    // and all images.
-    // -----------------------------------------
-    if (req.query.full === "true") {
-      const visits = await SupervisorVisit
-        .find(filter)
-        .sort({ date: -1 })
-        .lean();
+    let q = SupervisorVisit.find(filter).sort({ date: -1 });
+    if (req.query.full !== "true") q = q.select("-general -sectionA -sectionB -sectionC");
 
-      return res.status(200).json({
-        success: true,
-        count: visits.length,
-        visits,
-      });
-    }
-
-    // -----------------------------------------
-    // Normal list mode
-    //
-    // Don't return complete section data because
-    // sections can be large.
-    //
-    // But explicitly return photo information.
-    // -----------------------------------------
-    const visits = await SupervisorVisit
-      .find(filter)
-      .select([
-        "districtCode",
-        "blockCode",
-        "sectorCode",
-        "awcCode",
-
-        "districtName",
-        "blockName",
-        "sectorName",
-        "awcName",
-        "supervisorName",
-
-        "date",
-        "status",
-        "formStatus",
-
-        "sectionStatus",
-
-        "submittedAt",
-        "checkInTime",
-        "checkInLatitude",
-        "checkInLongitude",
-
-        "checkOutTime",
-        "checkOutLatitude",
-        "checkOutLongitude",
-
-        "reviewedBy",
-        "reviewedAt",
-        "reviewRemarks",
-
-        "createdBy",
-        "createdAt",
-        "updatedAt",
-
-        // -------------------------------------
-        // Photos
-        // -------------------------------------
-
-        "general.arrivalPhoto",
-
-        "sectionC.heightWeightCheck.childName",
-        "sectionC.heightWeightCheck.heightCm",
-        "sectionC.heightWeightCheck.weightKg",
-        "sectionC.heightWeightCheck.photo",
-
-        "sectionC.mealPlatePhoto",
-
-        "sectionC.leavingPhoto",
-      ])
-      .sort({ date: -1 })
-      .lean();
-
-    // -----------------------------------------
-    // Normalize photos into a simple array
-    // -----------------------------------------
-    const formattedVisits = visits.map((visit) => {
-      const photos = [];
-
-      // General - Arrival Photo
-      if (visit.general?.arrivalPhoto?.url) {
-        photos.push({
-          type: "arrival",
-          section: "general",
-          label: "Arrival Photo",
-          ...visit.general.arrivalPhoto,
-        });
-      }
-
-      // Section C - Height / Weight Photo
-      if (visit.sectionC?.heightWeightCheck?.photo?.url) {
-        photos.push({
-          type: "heightWeight",
-          section: "sectionC",
-          label: "Height & Weight Photo",
-
-          childName:
-            visit.sectionC.heightWeightCheck.childName || null,
-
-          heightCm:
-            visit.sectionC.heightWeightCheck.heightCm ?? null,
-
-          weightKg:
-            visit.sectionC.heightWeightCheck.weightKg ?? null,
-
-          ...visit.sectionC.heightWeightCheck.photo,
-        });
-      }
-
-      // Section C - Meal Plate Photo
-      if (visit.sectionC?.mealPlatePhoto?.url) {
-        photos.push({
-          type: "mealPlate",
-          section: "sectionC",
-          label: "Meal Plate Photo",
-          ...visit.sectionC.mealPlatePhoto,
-        });
-      }
-
-      // Section C - Leaving Photo
-      if (visit.sectionC?.leavingPhoto?.url) {
-        photos.push({
-          type: "leaving",
-          section: "sectionC",
-          label: "Leaving Photo",
-          ...visit.sectionC.leavingPhoto,
-        });
-      }
-
-      return {
-        ...visit,
-
-        // Don't expose the big section objects
-        // in normal list response.
-        general: undefined,
-        sectionA: undefined,
-        sectionB: undefined,
-        sectionC: undefined,
-
-        // All photos in one simple array
-        photos,
-      };
-    });
-
-    return res.status(200).json({
-      success: true,
-      count: formattedVisits.length,
-      visits: formattedVisits,
-    });
+    const visits = await q;
+    res.status(200).json({ success: true, count: visits.length, visits });
   } catch (err) {
-    console.error("getVisits error:", err);
-
-    return res.status(500).json({
-      success: false,
-      message: err.message,
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 

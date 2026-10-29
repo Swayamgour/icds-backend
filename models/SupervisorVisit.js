@@ -258,5 +258,6 @@ const supervisorVisitSchema = new mongoose.Schema(
 );
 
 supervisorVisitSchema.index({ awcCode: 1, date: -1 });
+supervisorVisitSchema.index({ districtCode: 1, date: 1 }, { name: "district_date" }); // grading/ranking period queries
 
 module.exports = mongoose.model("SupervisorVisit", supervisorVisitSchema);
