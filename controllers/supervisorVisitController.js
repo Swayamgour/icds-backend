@@ -7,12 +7,15 @@ const { ROLES } = require("../config/roles");
 // URL slug -> document field
 const SECTION_MAP = { general: "general", a: "sectionA", b: "sectionB", c: "sectionC" };
 const SECTION_KEYS = Object.values(SECTION_MAP);
+const STOCK_FIELDS = ["totalBeneficiaries", "balanceStock", "demand", "found"];
 
-// Fields marked * (required) in the app. Checked only when a section is
-// submitted as completed (markComplete !== false).
+// EVERY field of the form is required (except Remarks) - same list as the web
+// form (supervisorVisitConfig.js). Checked only when a section is submitted as
+// completed (markComplete !== false).
 const REQUIRED = {
-  general: [],
+  general: ["visitDate", "centerOpen", "arrivalTime"],
   sectionA: [
+    "building.ownership",
     "building.isDilapidated",
     "building.repairNeeded",
     "building.upgradationNeeded",
@@ -26,8 +29,32 @@ const REQUIRED = {
     "supplementaryNutrition.purnaRegisteredGirls15To18",
     "supplementaryNutrition.purnaGirlsTookThr",
     "supplementaryNutrition.thrDistributionComplete",
+    // THR stock: 3 blocks x 4 numbers
+    ...["balshakti", "matrushakti", "purnashakti"].flatMap((b) =>
+      STOCK_FIELDS.map((f) => `supplementaryNutrition.thrStock.${b}.${f}`)
+    ),
+    // HCM stock: 3 items x 4 numbers (stored as an array of { item, ... })
+    ...["fortifiedFlour", "rice", "oil"].flatMap((b) =>
+      STOCK_FIELDS.map((f) => `supplementaryNutrition.hcmStock.${b}.${f}`)
+    ),
   ],
-  sectionB: [],
+  sectionB: [
+    "poshanSudha.registeredBeneficiaries",
+    "poshanSudha.presentBeneficiaries",
+    "poshanSudha.psyMealAsPerMenu",
+    "poshanSudha.localPurchaseBillsPaidTill.month",
+    "poshanSudha.localPurchaseBillsPaidTill.year",
+    "poshanSudha.dailyAttendanceFilled",
+    "milkReceivedToday",
+    "milkPacketsDemanded",
+    "milkPacketsReceived",
+    "registeredBeneficiaries.pregnantLactating",
+    "registeredBeneficiaries.children7mTo3y",
+    "registeredBeneficiaries.children3To6y",
+    "beneficiariesServedInPresence.pregnantLactating",
+    "beneficiariesServedInPresence.children7mTo3y",
+    "beneficiariesServedInPresence.children3To6y",
+  ],
   sectionC: [
     "preSchool.kitUsed",
     "preSchool.activitiesAsPerThemeTimetable",
@@ -42,17 +69,58 @@ const REQUIRED = {
     "growthEquipment.stadiometer",
     "growthEquipment.weighingScale",
     "adolescentWeightHeightDone",
+    "heightWeightCheck.childName",
+    "heightWeightCheck.heightCm",
+    "heightWeightCheck.weightKg",
+    "heightWeightCheck.photo",
     "observation.anganwadiClean",
     "observation.surroundingsClean",
     "observation.hotBreakfastQuality",
     "observation.workerKnowledge",
     "observation.anganwadiRanking",
+    "mealPlatePhoto",
+    "leavingPhoto",
     "leavingTime",
   ],
 };
 
+// Follow-up questions: required (and kept) only while their Yes/No answer is true.
+const CONDITIONAL = {
+  sectionA: [
+    { path: "building.repairType", when: "building.repairNeeded" },
+    { path: "building.upgradationReason", when: "building.upgradationNeeded" },
+  ],
+};
+
+// photo fields are "filled" only when they carry an uploaded url
+const PHOTO_PATHS = new Set(["heightWeightCheck.photo", "mealPlatePhoto", "leavingPhoto"]);
+
 const getPath = (obj, path) => path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
-const isMissing = (v) => v === undefined || v === null || v === "";
+const isMissing = (v) => v === undefined || v === null || v === "" || (typeof v === "string" && v.trim() === "");
+
+// value of a required path - knows about the HCM stock array and photo objects
+const getValue = (data, path) => {
+  const m = path.match(/^(.*\.hcmStock)\.(\w+)\.(\w+)$/);
+  if (m) {
+    const arr = getPath(data, m[1]);
+    const row = Array.isArray(arr) ? arr.find((r) => r && r.item === m[2]) : null;
+    return row ? row[m[3]] : undefined;
+  }
+  const v = getPath(data, path);
+  return PHOTO_PATHS.has(path) ? v?.url : v;
+};
+
+// required paths for a section given what was actually sent
+const requiredFor = (key, data) => [
+  ...REQUIRED[key],
+  ...(CONDITIONAL[key] || []).filter((c) => getPath(data, c.when) === true).map((c) => c.path),
+];
+
+// India time (IST) - the arrival time is taken from the server, never typed by the user
+const nowTimeIST = () =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(
+    new Date()
+  );
 
 const dayRange = (d) => {
   const start = new Date(d);
@@ -186,15 +254,38 @@ const saveSection = async (req, res) => {
       return res.status(400).json({ success: false, message: "Section body must be a JSON object" });
     }
 
+    // Sections open step by step: General -> A -> B -> C
+    const idx = SECTION_KEYS.indexOf(key);
+    if (idx > 0 && !visit.sectionStatus[SECTION_KEYS[idx - 1]]?.completed) {
+      return res.status(400).json({
+        success: false,
+        message: `Complete the previous section first (${SECTION_KEYS[idx - 1]})`,
+      });
+    }
+
+    // General section: date + arrival time are auto - the client cannot change them
+    if (key === "general") {
+      data.visitDate = visit.date;
+      data.arrivalTime = visit.general?.arrivalTime || nowTimeIST();
+    }
+
+    // Follow-up boxes only count while their answer is "Yes" - wipe stale text
+    (CONDITIONAL[key] || []).forEach((c) => {
+      if (getPath(data, c.when) !== true) {
+        const keys = c.path.split(".");
+        const parent = keys.slice(0, -1).reduce((o, k) => (o == null ? undefined : o[k]), data);
+        if (parent && typeof parent === "object") delete parent[keys[keys.length - 1]];
+      }
+    });
+
     if (markComplete !== false) {
-      const missing = REQUIRED[key].filter((p) => isMissing(getPath(data, p)));
+      const missing = requiredFor(key, data).filter((p) => isMissing(getValue(data, p)));
       if (missing.length > 0) {
         return res.status(400).json({ success: false, message: "Required fields missing", missing });
       }
     }
 
     visit.set(key, data);
-    if (key === "general" && data.visitDate) visit.date = new Date(data.visitDate); // Q1
     if (markComplete !== false) {
       visit.sectionStatus[key] = { completed: true, submittedAt: new Date() };
     }

@@ -80,7 +80,9 @@ const sectionASchema = new mongoose.Schema(
       rentPaidTill: { type: monthYear }, // Q6
       isDilapidated: Boolean, // Q7
       repairNeeded: Boolean, // Q8
+      repairType: { type: String, trim: true }, // follow-up of repairNeeded - what kind of repairing (only when repairNeeded = true)
       upgradationNeeded: Boolean, // Q9
+      upgradationReason: { type: String, trim: true }, // follow-up of upgradationNeeded - reason / type of renovation (only when upgradationNeeded = true)
       toiletWorking: Boolean, // Q10
       drinkingWater: Boolean, // Q11
       electricity: Boolean, // Q12
